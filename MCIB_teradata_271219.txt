@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+
+<var-def name="teradata_loc">
+       <template>C:\Program Files (x86)\Teradata\Client\14.00\Teradata SQL Assistant\startup.exe</template>
+</var-def>
+
+<var-def name="mcib_path">
+       <template>C:\Users\r09113389\Desktop\MCIB\Uploads\</template>
+</var-def>
+
+
+	<robotics-flow>
+		<robot driver="universal" close-on-completion="false"
+			start-in-private="false">
+			<capability name="SEARCH_ALL_WINDOWS" value="true" />
+			<capability name="CLOSE_ALL_WINDOWS" value="false" />
+			<script><![CDATA[
+			
+			import java.text.SimpleDateFormat;
+			import com.workfusion.studio.rpa.recorder.api.*
+			import com.workfusion.studio.rpa.recorder.api.types.*
+			import com.workfusion.studio.rpa.recorder.api.custom.*
+			import com.workfusion.studio.rpa.recorder.api.internal.representation.*
+			import com.workfusion.bot.exception.*
+				
+			
+			Date datos = new Date();
+			String currdt_folder = new SimpleDateFormat("dd.MM.yyyy").format(datos);
+			String currmonth_folder = new SimpleDateFormat("M MMMM").format(datos);
+			
+			File monthlyFolder = new File(mcib_path.toString()+currmonth_folder);
+                     if(!monthlyFolder.exists()){
+                           monthlyFolder.mkdir();
+                     }
+			
+			File dailyFolder = new File(mcib_path.toString()+currmonth_folder+"//"+currdt_folder);
+                     if(!dailyFolder.exists()){
+                           dailyFolder.mkdir();
+                     }
+			
+			//OPEN TERADATA
+			/* sendKeys('#r');
+			switchTo().window('[class="#32770"][title="Run"]');
+			sendKeys(teradata_loc);
+			pressEnter();
+			 */
+			
+			switchToExistingWindow(new WindowDescriptor("", "(?i).*\\QTeradata SQL Assistant\\E.*", false, true).toString(), 10000);
+			
+			switchTo().window('[CLASS:WindowsForms10.Window.8.app.0.33c0d9d;TITLE:Teradata SQL Assistant]');
+			sendKeys('^o');//control o
+			switchTo().window('[CLASS:#32770;TITLE:Open Query]');
+			sendKeys(mcib_path.toString()+"sql_files\\Loans and Overdraft arrears extract_new")
+			pressEnter();
+			switchToExistingWindow(new WindowDescriptor("", "(?i).*\\QTeradata SQL Assistant\\E.*", false, true).toString(), 10000);
+			sendKeys('{F5}');
+			//sendKeys(Keys.F5);
+			switchTo().window('[CLASS:#32770;TITLE:Export File]');
+			sendKeys(mcib_path.toString()+currmonth_folder+"\\"+currdt_folder+"\\Loans and Overdraft arrears extract_new");
+			
+			]]></script>
+		</robot>
+	</robotics-flow>
+    <export include-original-data="true"></export>
+
+</config>
