@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+	
+	<var-def name="country_codes">
+		<datastore name="A2_country_codes">
+			SELECT * from @this
+		</datastore>
+	</var-def>
+	
+	<var-def name="entity_types">
+		<datastore name="entity_types">
+			SELECT * from @this
+		</datastore>
+	</var-def>
+	
+	<script><![CDATA[ 
+		String country = "";
+		String country_code = "";
+		String entity_type = "";
+		String entity_type_code = "";
+		
+		HashMap<String, String> country_codes_map = new HashMap<String, String>();
+		HashMap<String, String> entity_type_map   = new HashMap<String, String>();
+		
+		for(int i=0; i<country_codes.size(); i++){
+			country = country_codes.get(i).getAt("Country").toString();
+			country_code = country_codes.get(i).getAt("Code").toString();   
+			country_codes_map.put(country,country_code);
+		}
+		
+		for(int i=0; i<entity_types.size(); i++){
+			entity_type = entity_types.get(i).getAt("entity_type").toString();
+			entity_type_code = entity_types.get(i).getAt("code").toString();   
+			entity_type_map.put(entity_type,entity_type_code);
+		}
+		
+		
+		println(country_codes_map.get("SEYCHELLES"));
+		println(entity_type_map.get("INDIVIDUAL"));
+		
+	]]></script>
+	
+    <export include-original-data="true"></export>
+
+</config>
