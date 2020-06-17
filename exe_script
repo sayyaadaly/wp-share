@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config">
+    
+    <robotics-flow>
+        <robot name="seleniumDriver" driver="universal" close-on-completion="true" start-in-private="false">
+            <var-def name="pythonscriptresult">
+                <script return="executePythonScript()"><![CDATA[
+                    
+                    /**
+                    *** This is the execution for your_script.py
+                    **/
+                    
+                    static String executePythonScript() throws InterruptedException {
+                        builder = new ProcessBuilder(new String[] {
+							"C:/Windows/System32/wscript.exe",
+                            "C:/Users/NanoBNK/Desktop/BARC/MCIB/Reports/script/email_download.vbs"
+                            
+                        });
+                        String pythonScriptOutput = invoke(builder);
+                        return pythonScriptOutput;
+                    }
+                    
+                    /**
+                    *** The invoke() method returns any results from the script captured from the out stream
+                    **/
+                    
+                    static String invoke(ProcessBuilder builder) throws IOException, InterruptedException {
+                        builder.redirectErrorStream(true);
+                        log.debug("Executing python command: {}", builder.command());
+                        Process process = builder.start();
+                        BufferedReader reader = null;
+                        String output = null;
+                        
+                        try {
+                            reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                            output = org.apache.commons.io.IOUtils.toString(reader);
+                        } finally {
+                            if (reader != null) {
+                                reader.close();
+                            }
+                        }
+                        
+                        int code = process.waitFor();
+                        if (code != 0) {
+                            throw new RuntimeException("Failed to invoke process: " + builder.command() + ". Return code: " + code + ". Output: " + output);
+                        }
+                        return output;
+                    }
+                ]]></script>
+            </var-def>
+        </robot>
+    </robotics-flow>
+    
+    <export include-original-data="true"/>
+</config>
