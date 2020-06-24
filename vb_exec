@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+
+<var-def name="links">
+	<datastore name="mcib_reports">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
+
+		
+<robotics-flow>
+<robot driver="universal" start-in-private="false">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+		<script><![CDATA[
+			
+			//DIRECTORY
+			//path of MS Windows Script Host
+			String path1 = links.get(0).getAt("vb_path").toString();// C:/Windows/System32/wscript.exe
+			//path of vbscript
+			String path2 = links.get(0).getAt("path").toString();//e.g C:\\Users\\NanoBNK\\Desktop\\BARC\\MCIB\\Reports\\script\\email_download.vbs
+			
+			String[] paths = new String[2];
+			paths[0] = path1;
+			paths[1] = path2;
+			
+			ProcessBuilder builder = new ProcessBuilder(paths);
+			builder.redirectErrorStream(true);
+			Process process = builder.start();
+			InputStreamReader isr = new InputStreamReader(process.getInputStream());
+			BufferedReader br = new BufferedReader(isr);
+			String output = org.apache.commons.io.IOUtils.toString(br);
+			//same thing in 2 lines but dunno if stable
+			/* String exec = "wscript " + path2;
+			Runtime.getRuntime().exec(exec); */
+			
+					
+		]]></script>
+
+</robot>
+</robotics-flow>
+
+
+		
+    <export include-original-data="true"></export>
+
+</config>
