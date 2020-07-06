@@ -1,0 +1,63 @@
+Dim SavePath
+Dim Subject
+Dim FileExtension
+
+
+SavePath = "C:\Users\NanoBNK\Desktop\BARC\MCIB\Reports\script\"
+
+
+a = MonthName(Month(Date()),true)
+b = Day(Date())
+c = Year(Date())
+if b<10 then
+b="0"&b
+End If
+
+DDMMYYYY = b & " " & a & " " & c
+
+
+Subject = "MCIB Report " & DDMMYYYY
+MsgBox Subject
+' strDate = CDate(Date)
+' strDay = DatePart("dd", strDate)
+' strMonth = DatePart("mm", strDate)
+' strYear = DatePart("yyyy", strDate)
+
+FileExtension = "ARmessage"
+
+Set objOutlook = CreateObject("Outlook.Application")
+Set objNamespace = objOutlook.GetNamespace("MAPI")
+Set objFolder = objNamespace.GetDefaultFolder(6) 'Inbox
+
+Set colItems = objFolder.Items
+Set colFilteredItems = colItems.Restrict("[Unread]=true")
+Set colFilteredItems = colFilteredItems.Restrict("[Subject] = " & Subject)
+
+For Each objMessage In colFilteredItems
+    intCount = objMessage.Attachments.Count
+	senderx = objMessage.Sender.Address
+	ccx = objMessage.CC
+
+' Create The Object
+Set FSO = CreateObject("Scripting.FileSystemObject")
+
+' How To Write To A File
+Set File = FSO.CreateTextFile(SavePath+"temp.txt",True)
+File.Write senderx
+File.Write vbcrlf
+File.Write ccx
+File.Close
+	
+    If intCount > 0 Then
+        For i = 1 To intCount
+            
+				objMessage.SaveAs SavePath & "\" & objMessage.Subject & ".msg"
+                objMessage.Attachments.Item(i).SaveAsFile SavePath &  _
+                    objMessage.Attachments.Item(i).FileName
+					
+        Next
+        objMessage.Unread = False
+    End If
+Next
+
+
