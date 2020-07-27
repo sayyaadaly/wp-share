@@ -1,0 +1,64 @@
+<var-def name="ph">
+		<datastore name="public_holidays">
+			SELECT * from @this
+		</datastore>
+</var-def>
+
+
+<script><![CDATA[
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter
+
+
+LocalDate karanLocal    = LocalDate.parse("2020-05-14"); 							//test for current date
+//LocalDate karanLocal    = LocalDate.now()		
+LocalDate pwd		    = karanLocal.minusDays(1);										//live
+DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
+
+//LIST OF PUB_HO
+List dateList = new ArrayList();
+for(int i = 0; i < ph.size(); i++){
+	date = ph.get(i).getAt("Date").toString();	
+	dateList.add(date);
+}
+				
+		
+//PREVIOUS WORKING DAY
+boolean validPwd = false;
+while(!validPwd){
+	
+	String pwdCheck = pwd.format(csvDateFormat);
+		 
+	//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+	if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+		pwd = pwd.minusDays(1);
+
+	}
+	//THE WEEKND
+	else if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+		//SUNDAY
+		if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+			pwd = pwd.minusDays(1);
+		}
+		
+		//SATURDAY
+		if(pwd.getDayOfWeek().toString() == "SATURDAY"){
+			pwd = pwd.minusDays(1);
+		}
+	}
+	//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+	else{
+		validPwd = true;
+	}
+	
+	
+}
+
+log.info("Current Day: "+karanLocal);
+//PWD CHANGES 
+log.info("Previous Working Day: "+pwd);
+
+]]></script>
