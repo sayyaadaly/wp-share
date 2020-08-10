@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+	
+	<script><![CDATA[ 
+	
+		//add missing scenarios for account number
+		//listings is also appending into hashmap->added listing condition before appeding to hashmap 07/08/20
+		
+		
+		//test scenarios for account number 
+	
+		//apache excel
+		import org.apache.poi.xssf.usermodel.*;
+		import org.apache.poi.ss.usermodel.*;
+		import org.apache.poi.hssf.usermodel.*;
+		import java.text.SimpleDateFormat;
+		import org.apache.poi.ss.usermodel.DateUtil;
+		
+		//java string manipulation
+		import java.text.DecimalFormat;
+		import java.math.*; //big decimal
+		
+		//swift cmp
+		String[] bombaclak;
+		ArrayList bombaclakos = new ArrayList();
+		ArrayList<Double> swiftAmountArr = new ArrayList<Double>();
+		ArrayList<String> swiftSearchRefArr = new ArrayList<String>();
+		
+		Double swiftAmount = 0.0;
+		String swiftBOName = "";
+		String swiftAccNum = "";
+		boolean listing = false;
+		/* 
+		//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
+		
+		File morongwaFile = new File("C:\\Users\\Muthe Udaya Sankar\\Desktop\\pro\\BARC\\SFI Refund\\Morongwa_export_2020_02_04_15_37_18.xls"); 
+		FileInputStream fisi1 = new FileInputStream(morongwaFile);
+		HSSFWorkbook outputWorkbook1 = new HSSFWorkbook(fisi1);
+		HSSFSheet outputSheet1 = outputWorkbook1.getSheetAt(0);	
+		
+		int outputRowCount1 = outputSheet1.getLastRowNum();
+		int currentRowIndex1=1;//CHANGE
+		
+		Iterator rowIterator1 = outputSheet1.iterator();
+		
+		xlsRecord: while(rowIterator1.hasNext()){
+		
+			//reinitialise arrays and variables
+			bombaclak = new String[0];
+			swiftAccNum = "";
+			swiftBOName = "";
+			swiftAmount = 0.0;
+			listing = false;
+			
+			Row currentRow1 = outputSheet1.getRow(currentRowIndex1);
+			if(currentRow1 == null){
+				break;
+			}
+		
+			Cell cellData1 = currentRow1.getCell(18,Row.MissingCellPolicy.RETURN_BLANK_AS_NULL); //column 18 "Fin Format"
+			DataFormatter formatter1 = new DataFormatter();
+			value1 = formatter1.formatCellValue(cellData1);
+			
+			if(value1.contains("IBK")){
+				//println("----------------------------")
+				
+				//sleep(5000)
+				//println("eyebeeks foundos")
+				//println("IBK->"+currentRowIndex1);
+				
+				//delimiters(remove start and end of swift message tag)
+				int startIndex = value1.indexOf(":20")
+				int endIndex = value1.indexOf("-}");
+				value1 = value1.substring(startIndex+1,endIndex-1);
+				bombaclak = value1.split(":");
+				
+				
+				//SEARCH FOR AMOUNT 
+				for(int i = 0; i < bombaclak.size(); i++){
+					
+					if(bombaclak[i].contains("MUR") && bombaclak[i-1].contains("32A")){
+						int amountIndex = bombaclak[i].indexOf("R");
+						String amountStr = bombaclak[i].substring(amountIndex+1, bombaclak[i].length());
+						amountStr = amountStr.replace(",",".");
+						swiftAmount = Double.parseDouble(amountStr);
+						//println(swiftAmount);
+						
+					}
+					
+				}
+				
+				//SEARCH FOR ACCOUNT DETAILS
+				String accountDetailsRaw = bombaclak[bombaclak.size()-1].trim();
+				accountDetailsRaw = accountDetailsRaw.replace("//","");
+				String[] accountDetailsRawArr = accountDetailsRaw.split("\\r?\\n");
+				for(int i = 0; i < accountDetailsRawArr.size(); i++){
+					
+					//LISTING TO FOLLOW(will receive transactions by mail->skip)
+					if(accountDetailsRawArr[i].contains("LISTINGS")){
+						//continue xlsRecord;
+						listing = true;
+						break;
+					}
+					
+					
+					//by order of(name of person..)
+					if(accountDetailsRawArr[i].contains("BO") || accountDetailsRawArr[i].contains("B/O") ){
+
+						int nameIndex = accountDetailsRawArr[i].indexOf("O");
+						String name = accountDetailsRawArr[i]
+						name = name.substring(nameIndex+1, name.length());
+						swiftBOName = name.trim();
+						//println(swiftBOName)
+						
+					}
+					
+					//ACCOUNT NUMBER
+					//invalid credit account number
+					if(accountDetailsRawArr[i].contains("INVALID CREDIT ACCOUNT")){
+						
+						int partOneIndex = accountDetailsRawArr[i].indexOf("-");
+						String partOne = accountDetailsRawArr[i].substring(partOneIndex+1,accountDetailsRawArr[i].length());
+						partOne = partOne.trim();
+						String partTwo = accountDetailsRawArr[i+1].trim();
+						swiftAccNum = partOne + partTwo;
+						//println(swiftAccNum);
+						
+					}
+					//credit account is closed
+					if(accountDetailsRawArr[i].contains("CREDIT ACCOUNT IS CLOSED")){
+						
+						int partOneIndex = accountDetailsRawArr[i].indexOf("-");
+						String partOne = accountDetailsRawArr[i].substring(partOneIndex+1,accountDetailsRawArr[i].length());
+						partOne = partOne.trim();
+						String partTwo = accountDetailsRawArr[i+1].trim();
+						swiftAccNum = partOne + partTwo;
+						//println(swiftAccNum)
+						
+					}
+					//ac no. is invalid
+					if(accountDetailsRawArr[i].contains("AC NO.")){
+						
+						int partOneIndex = accountDetailsRawArr[i].indexOf(".");
+						String partOne = accountDetailsRawArr[i].substring(partOneIndex+1,accountDetailsRawArr[i].length());
+						partOne = partOne.trim();
+						swiftAccNum = partOne;
+						//println(swiftAccNum)
+						
+					}
+					//acc not found
+					if(accountDetailsRawArr[i].contains("ACC") && accountDetailsRawArr[i].contains("NOT FOUND")){
+						
+						int partOneIndex = accountDetailsRawArr[i].indexOf("ACC");
+						int partTwoIndex = accountDetailsRawArr[i].indexOf("NO");
+						String partOne 	 = accountDetailsRawArr[i].substring(partOneIndex+3,partTwoIndex-1);
+						partOne = partOne.trim();
+						swiftAccNum = partOne;
+						//println(swiftAccNum)
+						
+					}
+					
+				}
+				//add account details in hashmap
+				if(!listing){
+					if(swiftAccNum != ""){
+						swiftAmountArr.add(swiftAmount);
+						swiftSearchRefArr.add(swiftAccNum)
+						//println("HASHMAP->"+currentRowIndex1);
+					}
+					else if(swiftAccNum.isEmpty()){
+						swiftAmountArr.add(swiftAmount);
+						swiftSearchRefArr.add(swiftBOName);
+						//println("HASHMAP->"+currentRowIndex1);
+					}
+					else if(swiftBOName.isEmpty()){
+						swiftAmountArr.add(swiftAmount);
+						swiftSearchRefArr.add(" ");
+						//println("HASHMAP->"+currentRowIndex1);
+					}
+				}
+				
+			}
+			
+			currentRowIndex1++;
+		}
+		println(swiftSearchRefArr);
+		println(swiftSearchRefArr.size())
+		//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
+		 */
+		
+		swiftSearchRefArr.add("100674814000")
+		swiftAmountArr.add(2500.0);
+		
+		///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
+		File morongwaFile = new File("C:\\Users\\Muthe Udaya Sankar\\Desktop\\pro\\BARC\\SFI Refund\\MA060131.txt");
+		if(morongwaFile.exists()){
+			Scanner myReader = new Scanner(morongwaFile);
+			myReader.nextLine();  //header
+			//while(myReader.hasNextLine() && myReader != null){
+				
+				String raw_status = myReader.nextLine(); 
+				println(raw_status)
+				//check if record matches with account details of swift ibk-for each record 
+				for(int i = 0; i < swiftSearchRefArr.size(); i++){
+					if(raw_status.contains(swiftSearchRefArr[i])){ //missing screnario-> where there is no acc number or name in swift, then there will be a blank space 
+						
+						//parse amount and currency
+						int lastBlankIndex = raw_status.lastIndexOf(" "); 
+						String amount_currency = raw_status.substring(lastBlankIndex+1,raw_status.length());
+						String amount_raw = amount_currency.substring(3,amount_currency.length()); //need to test more length of currency
+						if(amount_currency.contains("MUR")){
+							amount_bd = new BigDecimal(amount_raw);
+							amount_bd = amount_bd.movePointLeft(2);
+							double amount = amount_bd.doubleValue();
+							if(swiftAmountArr[i] == amount){
+								println("suxxessa")
+							}
+						}
+					}
+				}
+			//}
+				
+		}
+
+		
+		
+		
+		///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
+		
+	]]></script>
+	
+    <export include-original-data="true"></export>
+
+</config>
