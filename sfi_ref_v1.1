@@ -28,6 +28,7 @@
 			//.201 if there are 2 identical records, duplicates will be caused in the loop-->use break after matched-->problem
 			//.201 solution use boolean to indicate if already matched, then go to next line in text 17/08/20
 			//added ebox array for records found on MA 25/08/20
+			//second pwd for searching-->dynamic month and date search for 201 27/08/20 test further
 			
 			//auth 21/08/20-->test further if key changes
 			
@@ -37,8 +38,9 @@
 			//those who match with MA search on ebox, rest search on 201 and put to log
 			//date problem-->sometimes will have to search on pwd and sometimes same date 
 			//MA Files will they be in monthly folders?
-			//if searched on MA found e.g 3 out of 5, then will clear cmp arr and search in 201 
-			//second pwd for searching
+			
+			//duplicates while searching in 201 files--> use array to store records obtained in MA only to compare with whle searching 201 27/08/20
+			
 			
 			//date
 			import java.time.LocalDate;
@@ -64,6 +66,7 @@
 			LocalDate karanLocal    = LocalDate.parse("2020-08-04"); 							
 			//LocalDate karanLocal    = LocalDate.now()		
 			LocalDate pwd		    = karanLocal.minusDays(1);										//live
+			LocalDate second_pwd	= pwd.minusDays(1);
 			DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
 
 			DateTimeFormatter morongwaQueryDateFormat   = DateTimeFormatter.ofPattern("d");
@@ -95,6 +98,11 @@
 			ArrayList<String> eboxBranchCodeArr = new ArrayList<String>();
 			ArrayList<String> eboxAccNumArr = new ArrayList<String>();
 			ArrayList<String> eboxAmtArr = new ArrayList<String>();
+			ArrayList<String> excelBranchCodeArr = new ArrayList<String>();
+			ArrayList<String> excelAccNumArr = new ArrayList<String>();
+			ArrayList<String> excelAmtArr = new ArrayList<String>();
+			ArrayList<Double> swiftAmountArrMA = new ArrayList<Double>();
+			ArrayList<String> swiftSearchRefArrMA = new ArrayList<String>();
 			
 			Double swiftAmount = 0.0;
 			String swiftBOName = "";
@@ -139,10 +147,42 @@
 				
 				
 			}
+			//SECOND PREVIOUS WORKING DAY
+			boolean validSecondPwd = false;
+			while(!validSecondPwd){
+				
+				String pwdCheck = second_pwd.format(csvDateFormat);
+					 
+				//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+				if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+					second_pwd = second_pwd.minusDays(1);
+
+				}
+				//THE WEEKND
+				else if(second_pwd.getDayOfWeek().toString() == "SUNDAY"){
+					//SUNDAY
+					if(second_pwd.getDayOfWeek().toString() == "SUNDAY"){
+						second_pwd = second_pwd.minusDays(1);
+					}
+					
+					//SATURDAY
+					if(second_pwd.getDayOfWeek().toString() == "SATURDAY"){
+						second_pwd = second_pwd.minusDays(1);
+					}
+				}
+				//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+				else{
+					validSecondPwd = true;
+				}
+				
+				
+			}
 
 			log.info("Current Day: "+karanLocal);
 			//PWD CHANGES 
-			log.info("Previous Working Day: "+pwd);/* 
+			log.info("Previous Working Day: "+pwd);
+			log.info("Second Previous Working Day: "+second_pwd);
+			/* 
 			
 			 
 		 	//////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
@@ -441,13 +481,14 @@
 			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
 			String MAFileDatePart = karanLocal.format(MAFileDateFormat);
 			String MAFilePwdDatePart = pwd.format(MAFileDateFormat);
+			String MAFileSecondPwdDatePart = second_pwd.format(MAFileDateFormat);
 			
 			log.info("SEARCHING IN MA FILES");
 			File MAFolder = new File(MAFolder_path);
 			File[] MAFiles = MAFolder.listFiles();
 			for(File file : MAFiles){
-				if(file.getName().contains("MA06"+MAFileDatePart) || file.getName().contains("MA06"+MAFilePwdDatePart)){
-					
+				if(file.getName().contains("MA06"+MAFileDatePart) || file.getName().contains("MA06"+MAFilePwdDatePart) || file.getName().contains("MA06"+MAFileSecondPwdDatePart)){
+					log.info("Searching in "+file.getName());
 					Scanner myReader = new Scanner(file);
 					myReader.nextLine();  //header
 					while(myReader.hasNextLine() && myReader != null){
@@ -488,6 +529,9 @@
 										eboxBranchCodeArr.add(dest_branch);
 										eboxAccNumArr.add(dest_acc);
 										eboxAmtArr.add(amount)
+										//records obtained in MA will often be found in 201 files also, so to not add duplicates, this array will be compared to swiftAmountArrCmp while searching in 201
+										swiftAmountArrMA.add(swiftAmountArr[i]);
+										swiftSearchRefArrMA.add(swiftSearchRefArr[i]);
 									}
 								}
 							}
@@ -496,12 +540,16 @@
 				}
 			}
 			println("MA SEARCH-->"+swiftSearchRefArrCmp)
+			println("EBOX BRANCH-->"+eboxBranchCodeArr)
+			println("EBOX ACC-->"+eboxAccNumArr)
 			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
 			//////////////////////////////////////////////////////////READ 201 MESSAGE////////////////////////////////////////////////////////////////////
 			String reports201FolderDate = karanLocal.format(reports201DateFormat).toUpperCase();
 			String reports201subFolderDate = karanLocal.format(reports201subDateFormat);
 			String reports201pwdFolderDate = pwd.format(reports201DateFormat).toUpperCase();
 			String reports201pwdsubFolderDate = pwd.format(reports201subDateFormat);
+			String reports201SecondpwdFolderDate = second_pwd.format(reports201DateFormat).toUpperCase();
+			String reports201SecondpwdsubFolderDate = second_pwd.format(reports201subDateFormat);
 			
 			//to remove duplicates
 			swiftAmountArrCmp.clear();
@@ -511,15 +559,16 @@
 			File folder201Reports = new File(reports201_path);
 			File[] folder201Month = folder201Reports.listFiles();
 			for(File file : folder201Month){
-				if(file.getName().equals(reports201FolderDate) || file.getName().equals(reports201pwdFolderDate)){
+				if(file.getName().equals(reports201FolderDate) || file.getName().equals(reports201pwdFolderDate) || file.getName().equals(reports201SecondpwdFolderDate)){
 					File[] folder201Date = file.listFiles();
 					for(File datefile : folder201Date){
-						if(datefile.getName().equals(reports201subFolderDate) || datefile.getName().equals(reports201pwdsubFolderDate)){
+						if(datefile.getName().equals(reports201subFolderDate) || datefile.getName().equals(reports201pwdsubFolderDate) || datefile.getName().equals(reports201SecondpwdsubFolderDate)){
 							//PROCESS ALL .201 AND SEARCH FOR RECORDS
 							//201 Reports dated folder e.g 31
+							//if all records found skip folder
 							if(swiftSearchRefArr.size() != swiftSearchRefArrCmp.size()){		
 								if(file.exists()){
-									log.info("Searching in 201 Folder for current day");
+									log.info("Searching in 201 Folder for "+ file.getName()+ "-"+datefile.getName());
 									File[] folder201Folder = datefile.listFiles();
 									for(File folder: folder201Folder){
 										//sub folder e.g 31 MNS
@@ -545,28 +594,36 @@
 																			//println(reportsSub.getAbsolutePath())
 																			ArrayList status = raw_status.split(" ");
 																			status.removeAll(Arrays.asList(null,""));
+																			//search for amount's position in array
 																			int amount_index = 0;
 																			for(int j =0; j < status.size(); j++){
 																				if(status[j].contains("DR") || status[j].contains("CR")){
 																					amount_index = j;
 																				}
 																			}
+																			//parse amount
 																			String amount_currency = status[amount_index].trim();
-																			//println(swiftSearchRefArr[i])
-																			//println(amount_currency)
 																			String amount_str = amount_currency.substring(0,amount_currency.length()-2)
 																			amount_str = amount_str.replace(",","");
 																			double amount = Double.parseDouble(amount_str);
 																			
+																			//parse originating details
+																			
+																			//println(swiftSearchRefArr[i])
+																			//println(amount_currency)
+																			
 																			if(swiftAmountArr[i] == amount){
-																				println("suzzessa")
+																				//println("suzzessa")
 																				match_found = true;
-																				//skip records already found in MA 
-																				
-																				//println("suzasar")
-																					swiftAmountArrCmp.add(swiftAmountArr[i]);
-																					swiftSearchRefArrCmp.add(swiftSearchRefArr[i])
-																				
+
+																				swiftAmountArrCmp.add(swiftAmountArr[i]);
+																				swiftSearchRefArrCmp.add(swiftSearchRefArr[i]);
+																				if(!swiftSearchRefArrMA.contains(swiftSearchRefArr[i]) && !swiftAmountArrMA.contains(swiftAmountArr[i])){
+																					//add to array to write to excel
+																					excelBranchCodeArr.add("");
+																					excelAccNumArr.add(swiftSearchRefArr[i]);
+																					excelAmtArr.add(swiftAmountArr[i]);
+																				}
 																			}
 																		}
 																	}
@@ -580,7 +637,7 @@
 									}
 								}
 								else{
-									log.info("201 Folder does not exist for current day");
+									log.info("201 Folder does not exist for "+ file.getName()+ "-"+datefile.getName());
 								}
 								
 								
@@ -597,8 +654,14 @@
 			println(swiftSearchRefArrCmp)
 			println(swiftAmountArrCmp)
 			
-			   
+			println(excelAccNumArr)   
+			println(excelAmtArr)   
 			
+			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
+			
+			
+			
+			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
 			
 			]]></script>
 	
