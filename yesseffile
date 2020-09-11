@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
 
+<secrets-vault-get alias="ebox" />
+<secrets-vault-get alias="morongwa" />
+
 <var-def name="ph">
 		<datastore name="public_holidays">
 			SELECT * from @this
 		</datastore>
 </var-def>
+
+
+<var-def name="links">
+	<datastore name="sfi_refund">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
 	
 	<robotics-flow>
 <robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
@@ -20,13 +30,29 @@
 			//getting issue while downloading morongwa excel -->button to be clicked might be disabled-->dynamic wait 12/08/20
 			//account not matching if contains all numbers sometimes -- removed leading 0s 12/08/20 
 			//search in MA Files 13/08/20
+			//matched hashmap that containts search reference and amount if matched 14/08/20
+			//search in 201 folder if not found in MA-->typically in "Q:\ROBOTICS\201 REPORTS\AUGUST\03\03 XXX\Reports\" 14/08/20
+			//.201 file hardcoded where to get amount from-->it changes in each file-->dont hardcode loop through array to find DR or CR in array 17/08/20
+			//scenario-->first record and fourth record in ref and amount array same
+			//.201 getting duplicates(when there are more than one transaction with same acc no in same file) while verifying-->option 1-remove ref and amount from arrays after matched-->problem loop will get out of bounds because the loop size will be reduced
+			//.201 if there are 2 identical records, duplicates will be caused in the loop-->use break after matched-->problem
+			//.201 solution use boolean to indicate if already matched, then go to next line in text 17/08/20
+			//added ebox array for records found on MA 25/08/20
+			//second pwd for searching-->dynamic month and date search for 201 27/08/20 test further
+			//add missing scenarios for account number 04/09/20
+			//duplicates while searching in 201 files--> use array to store records obtained in MA only to compare with whle searching 201 27/08/20
+			//delete morongwa excel after use or move to daily folder-->move default downloads to daily folder	09/09/20
+			//201 ADD REFUND NARRATIVE TO 201 FILES-->used REFUND as narrative--temp 04/09/20
+			//EBOX IF BIR, CHECK IF TRANSACTION DATE IS SAME OR ONE DAY BEFORE 04/09/20-->test further
 			
-			//add missing scenarios for account number
-			//delete morongwa excel after use or move to daily folder	
-			//auth login
+			//auth 21/08/20-->test further if key changes
 			
-			//matched hashmap that containts search reference and amount if matched
-			//search in 201 folder if not found in MA
+						
+			//search reference is name
+			//MA Files will they be in monthly folders?
+			
+			//MORONGWA date scenario to run 1030 and 1600
+			
 			
 			
 			//date
@@ -46,32 +72,106 @@
 			import java.text.DecimalFormat;
 			import java.math.*; //big decimal
 			
+			//gAuth
+			//import com.warrenstrange.googleauth.GoogleAuthenticator;
+			
+			//rounding of double
+			import java.math.RoundingMode;
+			import java.text.DecimalFormat;
+			
+			//files	
+			import org.apache.commons.io.FileUtils;
+			import java.io.File;
+			import java.io.FileInputStream;
+			import java.io.FileOutputStream;
+			import java.nio.file.FileSystem;
+			import java.nio.file.FileSystems;
+			import java.nio.file.Files;
+			import java.nio.file.Path;
+			import java.nio.file.StandardCopyOption;
+			
+			//sorting of array
+			import java.util.Comparator;
+			
 			//DATE
-			LocalDate karanLocal    = LocalDate.parse("2020-07-24"); 							
+			LocalDate karanLocal    = LocalDate.parse("2020-09-01"); 							
 			//LocalDate karanLocal    = LocalDate.now()		
 			LocalDate pwd		    = karanLocal.minusDays(1);										//live
+			LocalDate second_pwd	= pwd.minusDays(1);
+			LocalDateTime kLDT 		= LocalDateTime.now(ZoneId.of("GMT+04:00"));
+			
 			DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
-
 			DateTimeFormatter morongwaQueryDateFormat   = DateTimeFormatter.ofPattern("d");
 			DateTimeFormatter MAFileDateFormat			= DateTimeFormatter.ofPattern("MMdd");
+			DateTimeFormatter reports201DateFormat      = DateTimeFormatter.ofPattern("MMMM");
+			DateTimeFormatter reports201subDateFormat   = DateTimeFormatter.ofPattern("dd");
+			DateTimeFormatter eboxDateFormat     		= DateTimeFormatter.ofPattern("dd/MM/yy");
+			DateTimeFormatter folder201DateFormat     	= DateTimeFormatter.ofPattern("MMMM-dd");
+			DateTimeFormatter file201DateFormat     	= DateTimeFormatter.ofPattern("yyyy/MM/dd");
 			
+			//folder and file format
+			DateTimeFormatter yearlyFolderFormat = DateTimeFormatter.ofPattern("YYYY");
+			DateTimeFormatter monthlyFolderFormat = DateTimeFormatter.ofPattern("MM MMMM");
+			DateTimeFormatter dailyFolderDateFormat = DateTimeFormatter.ofPattern("dd.MM.yy");
+			String yearlyFolderStr = karanLocal.format(yearlyFolderFormat);
+			String monthlyFolderStr = karanLocal.format(monthlyFolderFormat);
+			String dailyFolderStr = karanLocal.format(dailyFolderDateFormat);
+			
+			DateTimeFormatter dateExcelFormat = DateTimeFormatter.ofPattern("MMMM "+"yyyy");
+			String dateExcel  = karanLocal.format(dateExcelFormat);
+			DateTimeFormatter MAFileBODateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+			
+			String tayme = karanLocal.toString() + " " + kLDT.getHour().toString()+ "_" + kLDT.getMinute().toString()
+			
+			////DATASTORE
+			//DIRECTORY
+			String Dir = links.get(0).getAt("path").toString();
+			//EBOX PORTAL
+			String ebox_portal = links.get(0).getAt("ebox_portal").toString();
+			//MORONGWA LIVE
+			String morongwa_live = links.get(0).getAt("morongwa_live").toString();
+			//MAKOLA PORTAL
+			String download_path = links.get(0).getAt("download_path").toString();
+			//MA FOLDER PATH
+			String MAFolder_path = links.get(0).getAt("MAFolder_path").toString()
+			//201 REPORTS FOLDER
+			String reports201_path = links.get(0).getAt("reports201_path").toString();
+			
+			//SECRETS VAULT
+			Map entryMap = secureEntryMap.getWrappedObject();
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("ebox");
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj2 = entryMap.get("morongwa");
+			ebox_login = obj.getKey().toString();
+			ebox_pass = obj.getValue().toString();
+			morongwa_login = obj2.getKey().toString();
+			morongwa_pass = obj2.getValue().toString();
+		
 			//PORTAL
-			String morongwa_uat = "https://celine-morongwa-uat.apps.nonprod.ocp.absa.co.za/#/";
-			String morongwa_live = "https://morongwa.prod.ocp.absa.co.za/#/";
-			String morongwa_login = "ABOR048";
-			String morongwa_pass = "Finger9.Ever";
+			//String morongwa_uat = "https://celine-morongwa-uat.apps.nonprod.ocp.absa.co.za/#/";
+			//String morongwa_live = "https://morongwa.prod.ocp.absa.co.za/#/";
+			//String morongwa_login = "ABOR048";
+			//String morongwa_pass = "Finger9.Ever,Forget854%%%";
+			//String ebox_portal = "https://eboxprdcsc.corebanking.intra.absa.co.za/csc/login.jsp";
+			//String ebox_login = "RB-MU_Robot_SFI_01";
+			//String ebox_pass = "Wheeljack01";
 			
 			//PATH
-			String download_path = "C:\\Users\\RB-MU_Robot_VPC_01\\Downloads\\";
+			//String download_path = "C:\\Users\\RB-MU_Robot_VPC_01\\Downloads\\";
 			String morongwa_path = "";
-			String MAFolder_path = "Q:\\CORPORATE ENTITY\\Year 2020\\Sybrin Echannel\\";
-			
+			//String MAFolder_path = "Q:\\CORPORATE ENTITY\\Year 2020\\Sybrin Echannel\\";
+			//String reports201_path = "Q:\\ROBOTICS\\201 REPORTS\\"; 
+			//String Dir = "Q:\\ROBOTICS\\SFI Refund\\" 
+		
 			//swift cmp
 			String[] bombaclak;
 			ArrayList bombaclakos = new ArrayList();
-			ArrayList<Double> swiftAmountArr = new ArrayList<Double>();
-			ArrayList<String> swiftSearchRefArr = new ArrayList<String>();
-			HashMap<String,Double> compared = new HashMap<String,Double>;
+			
+
+			ArrayList<IBK> swift = new ArrayList<IBK> ();
+			ArrayList<IBK> ebox = new ArrayList<IBK> ();
+			ArrayList<IBK> folder201 = new ArrayList<IBK>();
+			ArrayList<IBK> report = new ArrayList<IBK>();
+			
 			
 			Double swiftAmount = 0.0;
 			String swiftBOName = "";
@@ -116,14 +216,92 @@
 				
 				
 			}
+			//SECOND PREVIOUS WORKING DAY
+			boolean validSecondPwd = false;
+			while(!validSecondPwd){
+				
+				String pwdCheck = second_pwd.format(csvDateFormat);
+					 
+				//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+				if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+					second_pwd = second_pwd.minusDays(1);
+
+				}
+				//THE WEEKND
+				else if(second_pwd.getDayOfWeek().toString() == "SUNDAY"){
+					//SUNDAY
+					if(second_pwd.getDayOfWeek().toString() == "SUNDAY"){
+						second_pwd = second_pwd.minusDays(1);
+					}
+					
+					//SATURDAY
+					if(second_pwd.getDayOfWeek().toString() == "SATURDAY"){
+						second_pwd = second_pwd.minusDays(1);
+					}
+				}
+				//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+				else{
+					validSecondPwd = true;
+				}
+				
+				
+			}
 
 			log.info("Current Day: "+karanLocal);
 			//PWD CHANGES 
 			log.info("Previous Working Day: "+pwd);
+			log.info("Second Previous Working Day: "+second_pwd);
+			
+		
+			////////////////////CREATE FOLDER//////////////////////
+			//YEARLY FOLDER
+			File yearlyFolder = new File(Dir+yearlyFolderStr);
+			if(!yearlyFolder.exists()){
+			   yearlyFolder.mkdir();
+			}
+			
+			//MONTHLY FOLDER
+			File monthlyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr);
+			if(!monthlyFolder.exists()){
+				monthlyFolder.mkdir();
+			}
+				
+			//DAILY FOLDER
+			File dailyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr);
+			if(!dailyFolder.exists()){
+				dailyFolder.mkdir();   
+			}
+			////////////////////CREATE FOLDER//////////////////////
+			
+			//path
+			String daily_path =  Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr+"//";
+			String monthly_path = Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//";
+			String config_path = Dir+"config\\";
+			String log_path = daily_path+"log.txt";
+			String morongwaFileDailyPath = daily_path+tayme+".xlsx"
+			
+			//PRESENCE CHECK DATE EXCEL
+			//date excel path
+			String dateExcelPath = monthly_path+dateExcel+".xlsx";
+			String dateExcelTemplatePath = Dir+"sfi_refund_excel_template.xlsx";
+			File dateExcelTemplateFile = new File(dateExcelTemplatePath);
+
+			File dateExcelFile = new File(dateExcelPath);
+			if(!dateExcelFile.exists()){
+				log.info("Creating Monthly Excel")
+				
+				Files.copy(dateExcelTemplateFile.toPath(),dateExcelFile.toPath());
+					
+			}
+			
+			/* 
+			
 			
 			 
-			//////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
-			
+		 	//////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
+			String secret = "KZ4U6RSLIRAWO32MGB2FCOBSGVQUUNBS";
+			GoogleAuthenticator gAuth = new GoogleAuthenticator();
+			int code = gAuth.getTotpPassword(secret);
 			
 			//LOGIN
 			openChrome(morongwa_live);
@@ -132,6 +310,8 @@
 			$(byXpath('//*[@id="kc-login"]')).click();
 			
 			//G_AUTH 
+			$(byXpath('//*[@id="totp"]')).sendKeys(code);
+			$(byXpath('//*[@id="kc-login"]')).click();
 			
 			//test
 			//switchToExistingWindow(new WindowDescriptor("", "(?i).*\\QMorongwa\\E.*", false, true).toString(), 1000)
@@ -167,7 +347,7 @@
 			//choose date/time
 			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[1]')).click();
 			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[1]/div[4]/div/span')).click();
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[1]/input')).text("12");
+			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[1]/input')).text("11");
 			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[3]/input')).text("00");
 			sleep(1000);
 			//am
@@ -226,7 +406,7 @@
 				$(byXpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/mor-data-export/div/button')).click();
 				$(byXpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/mor-data-export/div/div/button[1]')).click();
 				sleep(5000);
-			}
+			} */
 			File downloadFolder = new File(download_path);
 			File[] downloadFiles = downloadFolder.listFiles();
 			for(File file : downloadFiles){
@@ -234,6 +414,7 @@
 					morongwa_path = file.toPath();
 				}
 			}
+			morongwa_path = morongwa_path.replace("\\","\\\\");
 		 	//////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
 			File morongwaFile = new File(morongwa_path);	
 			//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
@@ -264,7 +445,7 @@
 				Cell cellData1 = currentRow1.getCell(18,Row.MissingCellPolicy.RETURN_BLANK_AS_NULL); //column 18 "Fin Format"
 				DataFormatter formatter1 = new DataFormatter();
 				value1 = formatter1.formatCellValue(cellData1);
-				
+
 				if(value1.contains("IBK")){
 					//println("----------------------------")
 					
@@ -273,13 +454,16 @@
 					//println("IBK->"+currentRowIndex1);
 					
 					//delimiters(remove start and end of swift message tag)
-					int startIndex = value1.indexOf(":20")
+					int startIndex = value1.indexOf(":20:")
+					int endIndexNarrative = value1.indexOf(":21:");
 					int endIndex = value1.indexOf("-}");
+					String deb_narrative = value1.substring(startIndex+4,endIndexNarrative-1);
 					value1 = value1.substring(startIndex+1,endIndex-1);
 					bombaclak = value1.split(":");
 					
+					//println(deb_narrative)
 					
-					//SEARCH FOR AMOUNT 
+					//SEARCH FOR AMOUNT & NARRATIVE
 					for(int i = 0; i < bombaclak.size(); i++){
 						
 						if(bombaclak[i].contains("MUR") && bombaclak[i-1].contains("32A")){
@@ -289,15 +473,17 @@
 							swiftAmount = Double.parseDouble(amountStr);
 							//println(swiftAmount);
 							
+
 						}
-						
 					}
 					
 					//SEARCH FOR ACCOUNT DETAILS
 					String accountDetailsRaw = bombaclak[bombaclak.size()-1].trim();
-					accountDetailsRaw = accountDetailsRaw.replace("//","");
+					//accountDetailsRaw = accountDetailsRaw.replace("//","");
 					String[] accountDetailsRawArr = accountDetailsRaw.split("\\r?\\n");
 					for(int i = 0; i < accountDetailsRawArr.size(); i++){
+						
+						//println(accountDetailsRawArr[i])
 						
 						//LISTING TO FOLLOW(will receive transactions by mail->skip)
 						if(accountDetailsRawArr[i].contains("LISTINGS")){
@@ -308,11 +494,21 @@
 						
 						
 						//by order of(name of person..)
-						if(accountDetailsRawArr[i].contains("BO") || accountDetailsRawArr[i].contains("B/O") ){
+						if(accountDetailsRawArr[i].contains("//BO ")){
 
-							int nameIndex = accountDetailsRawArr[i].indexOf("O");
+							int nameIndex = accountDetailsRawArr[i].indexOf("//BO");
 							String name = accountDetailsRawArr[i]
-							name = name.substring(nameIndex+1, name.length());
+							name = name.substring(nameIndex+4, name.length());
+							swiftBOName = name.trim();
+							//println(swiftBOName)
+							
+						}
+						//by order of(name of person..)
+						if(accountDetailsRawArr[i].contains("//B/O ")){
+
+							int nameIndex = accountDetailsRawArr[i].indexOf("//B/O");
+							String name = accountDetailsRawArr[i]
+							name = name.substring(nameIndex+4, name.length());
 							swiftBOName = name.trim();
 							//println(swiftBOName)
 							
@@ -351,6 +547,16 @@
 							//println(swiftAccNum)
 							
 						}
+						//A/C NO.
+						if(accountDetailsRawArr[i].contains("A/C NO.")){
+							
+							int partOneIndex = accountDetailsRawArr[i].indexOf(".");
+							String partOne = accountDetailsRawArr[i].substring(partOneIndex+1,accountDetailsRawArr[i].length());
+							partOne = partOne.trim();
+							swiftAccNum = partOne;
+							//println(swiftAccNum)
+							
+						}
 						//acc not found
 						if(accountDetailsRawArr[i].contains("ACC") && accountDetailsRawArr[i].contains("NOT FOUND")){
 							
@@ -362,111 +568,593 @@
 							//println(swiftAccNum)
 							
 						}
+						//inactive credit account
+						if(accountDetailsRawArr[i].contains("INACTIVE CREDIT ACCOUNT")){
+							int partOneIndex = accountDetailsRawArr[i].indexOf("-");
+							String partOne = accountDetailsRawArr[i].substring(partOneIndex+1,accountDetailsRawArr[i].length());
+							String partTwo = accountDetailsRawArr[i+1].trim();
+							swiftAccNum = partOne + partTwo;
+							//println(swiftAccNum)
+						}
+						//acc no is invalid
+						if(accountDetailsRawArr[i].contains("ACC NO")){
+							
+							int partOneIndex = accountDetailsRawArr[i].indexOf("NO");
+							int partTwoIndex = accountDetailsRawArr[i].indexOf("IS");
+							String partOne = accountDetailsRawArr[i].substring(partOneIndex+2,partTwoIndex-1);
+							partOne = partOne.trim();
+							swiftAccNum = partOne;
+							//println(swiftAccNum)
+							
+						}
+						//ACC xxx INVALID IN OUR BOOKS
+						if(accountDetailsRawArr[i].contains("INVALID IN OUR")){
+							
+							int partOneIndex = accountDetailsRawArr[i].indexOf("ACC");
+							int partTwoIndex = accountDetailsRawArr[i].indexOf("INVALID");
+							String partOne = accountDetailsRawArr[i].substring(partOneIndex+3,partTwoIndex-1);
+							partOne = partOne.trim();
+							swiftAccNum = partOne;
+							//println(swiftAccNum)
+							
+						}
+
+						
 						
 					}
-					//add account details in hashmap
+					//add account details in IBK class record
 					if(!listing){
-						if(swiftAccNum != ""){
-							swiftAmountArr.add(swiftAmount);
-							swiftSearchRefArr.add(swiftAccNum)
-							//println("HASHMAP->"+currentRowIndex1);
-						}
-						else if(swiftAccNum.isEmpty()){
-							swiftAmountArr.add(swiftAmount);
-							swiftSearchRefArr.add(swiftBOName);
-							//println("HASHMAP->"+currentRowIndex1);
-						}
-						else if(swiftBOName.isEmpty()){
-							swiftAmountArr.add(swiftAmount);
-							swiftSearchRefArr.add(" ");
-							//println("HASHMAP->"+currentRowIndex1);
-						}
+						swiftAccNum = swiftAccNum.replace("//","");
+						swift.add(new IBK(swiftAccNum.trim(),swiftAmount,deb_narrative,"",swiftBOName,"","",""));
 					}
 					
 				}
 				
 				currentRowIndex1++;
 			}
-			println(swiftSearchRefArr);
-			println(swiftSearchRefArr.size())
-			println(swiftAmountArr)
-			//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
-			 
-			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
-			String MAFileDatePart = pwd.format(MAFileDateFormat);
-			/*String MAFile1 = MA060723-1
-			File MAFile = new File("Q:\\CORPORATE ENTITY\\Year 2020\\Sybrin Echannel\\MA060723-1.IBK");
-			if(MAFile.exists()){
-				Scanner myReader = new Scanner(MAFile);
-				myReader.nextLine();  //header
-				while(myReader.hasNextLine() && myReader != null){
-					
-					String raw_status = myReader.nextLine(); 
-					String account_num_trimmed = "";
-					//check if record matches with account details of swift ibk-for each record 
-					for(int i = 0; i < swiftSearchRefArr.size(); i++){
-						swiftSearchRefTrimmed = swiftSearchRefArr[i].replaceFirst("^0+(?!$)", "");
-						if(raw_status.contains(swiftSearchRefTrimmed)){ //missing screnario-> where there is no acc number or name in swift, then there will be a blank space 
-							
-							//parse amount and currency
-							int lastBlankIndex = raw_status.lastIndexOf(" "); 
-							String amount_currency = raw_status.substring(lastBlankIndex+1,raw_status.length());
-							String amount_raw = amount_currency.substring(3,amount_currency.length()); //need to test more length of currency
-							if(amount_currency.contains("MUR")){
-								amount_bd = new BigDecimal(amount_raw);
-								amount_bd = amount_bd.movePointLeft(2);
-								double amount = amount_bd.doubleValue();
-								if(swiftAmountArr[i] == amount){
-									println("suxxessa")
-								}
-							}
-						}
-					}
-				}
-					
+			
+			Iterator itr2=swift.iterator();
+			while(itr2.hasNext()){
+				IBK st=(IBK)itr2.next();
+				println("SWIFT-->"+st.cred_account_num+" "+st.bo_name+" "+st.amount)
 			}
-			*/
+			
+			
+			//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
+			  
+			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
+			String MAFileDatePart = karanLocal.format(MAFileDateFormat);
+			String MAFilePwdDatePart = pwd.format(MAFileDateFormat);
+			String MAFileSecondPwdDatePart = second_pwd.format(MAFileDateFormat);
+			String eboxDate = "";
+			String MADateBo = "";
+			
+			log.info("SEARCHING IN MA FILES");
 			File MAFolder = new File(MAFolder_path);
 			File[] MAFiles = MAFolder.listFiles();
+			MAFiles.sort(Comparator.reverseOrder());
 			for(File file : MAFiles){
-				if(file.getName().contains("MA06"+MAFileDatePart)){
+				if(file.getName().contains("MA06"+MAFileDatePart) || file.getName().contains("MA06"+MAFilePwdDatePart) || file.getName().contains("MA06"+MAFileSecondPwdDatePart)){
+					log.info("Searching in "+file.getName());
+					
+					if(file.getName().contains("MA06"+MAFileDatePart)){
+						eboxDate = karanLocal.format(eboxDateFormat);
+						MADateBo = karanLocal.format(MAFileBODateFormat);
+					}
+					if(file.getName().contains("MA06"+MAFilePwdDatePart)){
+						eboxDate = pwd.format(eboxDateFormat);
+						MADateBo = pwd.format(MAFileBODateFormat);
+					}
+					if(file.getName().contains("MA06"+MAFileSecondPwdDatePart)){
+						eboxDate = second_pwd.format(eboxDateFormat);
+						MADateBo = second_pwd.format(MAFileBODateFormat);
+					}
+					
+					
 					Scanner myReader = new Scanner(file);
 					myReader.nextLine();  //header
-					while(myReader.hasNextLine() && myReader != null){
+					while(myReader.hasNextLine() && myReader != null){ //read each line of MA
 						
 						String raw_status = myReader.nextLine(); 
-						String account_num_trimmed = "";
-						//check if record matches with account details of swift ibk-for each record 
-						for(int i = 0; i < swiftSearchRefArr.size(); i++){
-							swiftSearchRefTrimmed = swiftSearchRefArr[i].replaceFirst('^0+(?!$)', "");
-							if(raw_status.contains(swiftSearchRefTrimmed)){ //missing screnario-> where there is no acc number or name in swift, then there will be a blank space 
+						String swiftSearchRefTrimmed = "";
+						
+						int startBo = raw_status.indexOf(" ");
+						int endBo = raw_status.indexOf(MADateBo);
+						//println(endBo)
+						
+						if(endBo != -1){ //skip last line
+						
+							String boRaw = raw_status.substring(startBo,endBo);
+							boRaw = boRaw.trim();
+							//println(boRaw.trim())
+							
+							String bo = boRaw.substring(12,boRaw.length()); //remove account number and ref xxxxx
+							//println(bo)
+							
+							//check if record matches with account details of swift ibk-for each record 
+							Iterator itr=swift.iterator();  //loop through arraylist  
+							while(itr.hasNext()){
+								IBK st=(IBK)itr.next();  //loop through IBK records
 								
-								//parse amount and currency
-								int lastBlankIndex = raw_status.lastIndexOf(" "); 
-								String amount_currency = raw_status.substring(lastBlankIndex+1,raw_status.length());
-								String amount_raw = amount_currency.substring(3,amount_currency.length()); //need to test more length of currency
-								if(amount_currency.contains("MUR")){
-									amount_bd = new BigDecimal(amount_raw);
-									amount_bd = amount_bd.movePointLeft(2);
-									double amount = amount_bd.doubleValue();
-									if(swiftAmountArr[i] == amount){
-										println("suxxessa")
-										compared.put(swiftSearchRefArr[i],swiftAmountArr[i]);
+								boolean matchedBO = false;
+								
+								//validation Account Number
+								if(st.bo_name.isEmpty()){
+									swiftSearchRefTrimmed = st.cred_account_num.replaceFirst('^0+(?!$)', "");
+									if(raw_status.contains(swiftSearchRefTrimmed)){
+										matchedBO = true;
 									}
+									
 								}
+								//validation BO
+								else{
+									String[] boNameArr = st.bo_name.split("\\s+");
+									//println("BO NAME--> "+st.bo_name)
+									int count = 0;
+									for(int i = 0; i < boNameArr.size(); i++){
+										String temp = boNameArr[i].trim();
+										if(boNameArr[i].length() > 1){ //skip one letter 
+											if(bo.contains(boNameArr[i])){
+												//println("matched "+boNameArr[i])
+												count++;
+											}
+										}
+									}
+									if(count >= 2){
+										matchedBO = true;
+										println("MATCHED BO-->"+st.bo_name)
+										println("BO DETAILS-->"+bo)
+									}
+								} 
+								 
+								if(matchedBO){ //missing screnario-> where there is no acc number or name in swift, then there will be a blank space 
+									//println(swiftSearchRefTrimmed)
+									//parse branch code and account no of destination
+									ArrayList<String> trans_details = raw_status.split("\\s+");
+									//println(trans_details)
+									//trans_details.removeAll(Arrays.asList("", null));
+									String dest_branch_raw = trans_details[0];
+									//println(dest_branch_raw)
+									String dest_branch = dest_branch_raw.substring(dest_branch_raw.length()-2,dest_branch_raw.length());
+									String dest_acc_raw = "";
+									String dest_acc = "";
+									
+									dest_acc_raw = trans_details[1];
+									if(trans_details[1] != null || trans_details[1] != ""){
+										dest_acc = dest_acc_raw.substring(0,7);
+									}
+									else{
+										println("No Account number found for "+st.bo_name); //will get error if account blank(array will remove blank space) \\s+
+									}
+
+									//parse amount and currency
+									int lastBlankIndex = raw_status.lastIndexOf(" "); 
+									String amount_currency = raw_status.substring(lastBlankIndex+1,raw_status.length());
+									String amount_raw = amount_currency.substring(3,amount_currency.length()); //need to test more length of currency
+									if(amount_currency.contains("MUR")){
+										amount_bd = new BigDecimal(amount_raw);
+										amount_bd = amount_bd.movePointLeft(2);
+										double amount = amount_bd.doubleValue();
+										
+										//parse amount from IBK record
+										
+										
+										if(st.amount == amount){
+											//println(raw_status)
+											//to make a search on ebox(MA only)
+											//println("MA bo and amount matched")
+											ebox.add(new IBK(st.cred_account_num,amount,st.deb_narrative,"",st.bo_name,eboxDate,dest_acc,dest_branch)); //add cr narrative
+										}
+									}
+								} 
 							}
 						}
 					}
 				}
 			}
-			//if records not found in MA Files, search in .201 files
-			if(swiftSearchRefArr[i].size() != compared.size()){
-				
+			
+			log.info("SIZE of SWIFT IBK->"+swift.size());
+			
+			
+			log.info("SIZE of MA IBK->"+ebox.size());
+			
+			//compare ibk records found in swift file and ibk found in ma, find difference to search in 201 folder
+			Iterator swiftItr=swift.iterator();   
+			while(swiftItr.hasNext()){
+				boolean found = false;
+				String eboxDateStr;
+				IBK st=(IBK)swiftItr.next();
+				//println(st.cred_account_num)
+				Iterator eboxItr=ebox.iterator();
+				while(eboxItr.hasNext()){
+					IBK sts=(IBK)eboxItr.next();
+					//println(sts.cred_account_num)
+					if(sts.cred_account_num == st.cred_account_num && sts.amount == st.amount ){ 
+						found = true;
+						eboxDateStr = sts.ebox_date;
+					}					
+				}
+				if(!found){
+					folder201.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,"",st.bo_name,eboxDateStr,"",""));
+				}
+			} 
+			
+			
+			log.info("SIZE of 201 IBK TO SEARCH->"+folder201.size()); 
+		 	  
+			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
+	 		//////////////////////////////////////////////////////////READ 201 MESSAGE////////////////////////////////////////////////////////////////////
+			/* String reports201FolderDate = karanLocal.format(reports201DateFormat).toUpperCase();
+			String reports201subFolderDate = karanLocal.format(reports201subDateFormat);
+			String reports201pwdFolderDate = pwd.format(reports201DateFormat).toUpperCase();
+			String reports201pwdsubFolderDate = pwd.format(reports201subDateFormat);
+			String reports201SecondpwdFolderDate = second_pwd.format(reports201DateFormat).toUpperCase();
+			String reports201SecondpwdsubFolderDate = second_pwd.format(reports201subDateFormat);
+			
+			
+			log.info("SEARCHING IN .201 FILES");
+			File folder201Reports = new File(reports201_path);
+			File[] folder201Month = folder201Reports.listFiles();
+			for(File file : folder201Month){
+				if(file.getName().equals(reports201FolderDate) || file.getName().equals(reports201pwdFolderDate) || file.getName().equals(reports201SecondpwdFolderDate)){
+					File[] folder201Date = file.listFiles();
+					for(File datefile : folder201Date){
+						if(datefile.getName().equals(reports201subFolderDate) || datefile.getName().equals(reports201pwdsubFolderDate) || datefile.getName().equals(reports201SecondpwdsubFolderDate)){
+							//PROCESS ALL .201 AND SEARCH FOR RECORDS
+							//201 Reports dated folder e.g 31
+							//if all records found skip folder
+							if(report.size() != folder201.size()){		
+								if(file.exists()){
+									String date = file.getName()+ "-"+datefile.getName();
+									log.info("Searching in 201 Folder for "+ date);
+									File[] folder201Folder = datefile.listFiles();
+									for(File folder: folder201Folder){
+										//sub folder e.g 31 MNS
+										File[] folder201SubFolder = folder.listFiles();
+										for(File subfolder: folder201SubFolder){
+											if(subfolder.getName().contains("Reports")){
+												//reports folder 
+												File[] reportsFolder = subfolder.listFiles();
+												for(File reports: reportsFolder){
+													File[] subReportsFolder = reports.listFiles();
+													for(File reportsSub:subReportsFolder){
+														if(reportsSub.getAbsolutePath().contains(".201")){
+															Scanner myReader = new Scanner(reportsSub);
+															myReader.nextLine();  //header
+															while(myReader.hasNextLine() && myReader != null){
+																String raw_status = myReader.nextLine();
+																String swiftSearchRefTrimmed = "";
+																boolean match_found = false;
+																
+																Iterator itr=folder201.iterator();
+																while(itr.hasNext()){
+																	IBK st=(IBK)itr.next();
+																	//for(int i = 0; i < swiftSearchRefArr.size(); i++){
+																	if(!match_found){
+																		//swiftSearchRefTrimmed = st.cred_account_num.replaceFirst('^0+(?!$)', "");
+																		
+																		boolean matchedBO = false;
+							
+																		//validation Account Number
+																		if(st.bo_name.isEmpty()){
+																			swiftSearchRefTrimmed = st.cred_account_num.replaceFirst('^0+(?!$)', "");
+																			if(raw_status.contains(swiftSearchRefTrimmed)){
+																				matchedBO = true;
+																			}
+																			
+																		}
+																		//validation BO
+																		else{
+																			String[] boNameArr = st.bo_name.split("\\s+");
+																			//println("BO NAME--> "+st.bo_name)
+																			int count;
+																			for(int i = 0; i < boNameArr.size(); i++){
+																				if(raw_status.contains(boNameArr[i])){
+																					//println("matched "+boNameArr[i])
+																					count++;
+																				}
+																			}
+																			if(count >= boNameArr.size()-2){
+																				matchedBO = true;
+																				//println("matched bo")
+																			}
+																		}
+																													
+																		if(matchedBO){
+																			//println(reportsSub.getAbsolutePath())
+																			ArrayList status = raw_status.split("\\s+");
+																			//process date
+																			String date201RawStr = status[status.size()-2];
+																			println(date201RawStr)
+																			LocalDate date201 = LocalDate.parse(date201RawStr,file201DateFormat);
+																			String date201Str = date201.format(eboxDateFormat);
+																			String credit_narrative = "REFUND "+date201Str;
+																			//search for amount's position in array
+																			int amount_index = 0;
+																			for(int j =0; j < status.size(); j++){
+																				if(status[j].contains("DR") || status[j].contains("CR")){
+																					amount_index = j;
+																				}
+																			}
+																			//parse amount
+																			String amount_currency = status[amount_index].trim();
+																			String amount_str = amount_currency.substring(0,amount_currency.length()-2)
+																			amount_str = amount_str.replace(",","");
+																			double amount = Double.parseDouble(amount_str);
+																			
+																			if(st.amount == amount){
+																				//println("201 amount and bo matched")
+																				match_found = true;
+																				//println(raw_status)
+																				println(reportsSub.getAbsolutePath())
+																				
+																				report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"","","")); //add cr narrative
+																			
+																				
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+								else{
+									log.info("201 Folder does not exist for "+ file.getName()+ "-"+datefile.getName());
+								}
+								
+								
+								
+							
+								
+							}
+						}
+					}
+				}
 			}
 			
+			//////////////////////////////////////////////////////////READ 201 MESSAGE////////////////////////////////////////////////////////////////////
+			log.info("SIZE of 201 IBK FOUND->"+report.size());
+			  */
+			/* ///////////////////////////////////////////////////////////////EBOX//////////////////////////////////////////////////////////////////////////
+			//if records found of MA files, go through ebox 
+			if(ebox.size() > 0){
 			
-			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
+				log.info("SEARCHING ON EBOX")
+				
+				//LOGIN EBOX
+				openChrome(ebox_portal);
+				pageLoadTimeout(100000);
+				$(byXpath("//input[@name='username']")).sendKeys(ebox_login);
+				$(byXpath("//input[@name='j_password']")).sendKeys(ebox_pass);
+				//$(byText("corp.dsarena.com")).click();//domain only present in uat
+				pageLoadTimeout(30000);
+				$(byXpath("/html/body/div[2]/form/div[2]/input")).click();//login
+				
+				//TRANSACTION SEARCH
+				boolean ebox_load = false;
+				try{
+				ebox_load = $(byText("Transaction Search")).is(VISIBLE);
+				}catch(Exception e){
+					refresh();
+					pageLoadTimeout(100000);
+					$(byText("Transaction Search")).click();
+				}
+				
+				if(ebox_load){
+					$(byText("Transaction Search")).click();
+				}
+				
+				DecimalFormat eboxFormat = new DecimalFormat("#.##");
+				
+				Iterator itr=ebox.iterator();
+				while(itr.hasNext()){
+					IBK st=(IBK)itr.next();
+					//println("EBOX-->"+st.cred_account_num+" "+st.amount)
+				//for(int j = 0; j < eboxAccNumArr.size(); j++){
+					
+					log.info("Searching for Acc Num: "+st.cred_account_num);
+				
+					$(byXpath('//*[@id="first"]/form/table/tbody/tr/td[2]/select/option[4]')).click(); //originator
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[1]/td[2]/input')).clear(); //branch id clear
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[1]/td[2]/input')).sendKeys(st.ebox_branch); //branch id
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[2]/td[2]/input')).clear(); //acc number clear
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[2]/td[2]/input')).sendKeys(st.ebox_acc_num); //acc number
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[1]')).clear(); //amount 1 clear
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[1]')).sendKeys(eboxFormat.format(st.amount)); //amount 1
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[2]')).clear(); //amount 2 clear
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[2]')).sendKeys(eboxFormat.format(st.amount)); //amount 2
+					$(byXpath('//*[@id="originator"]/form/div[1]/input')).click(); //search
+					
+					
+					//COUNT NUMBER OF ROWS
+					boolean rowExists = true;
+					int i = 2;
+					int running_bal_row_count;
+					int row_count = 0;
+					while(rowExists){
+						
+						try{
+							rowExists = $(byXpath("//*[@id='search-results']/tbody/tr["+i+"]/td[2]")).is(EXIST);	//check by date column
+						}
+						catch(Exception e){
+							rowExists = false;
+						}
+						if(rowExists){
+							row_count++;
+							i++;
+						}
+						
+						
+					}//END OF ROWS
+					int row = i - 1;
+					boolean creditPass = true;
+					//println("Number of Transactions: "+row_count);
+					//println("Last Row Item Number: "+ row);
+					
+					String eboxTransDate = "";
+					String eboxType = "";
+					boolean found = false;
+					//GO THROUGH EACH RECORD TO FIND CORRESPONDING DATE 
+					while(row >= 2){
+						
+						//enter on transaction with corresponding date
+						eboxTransDate = $(byXpath('//*[@id="search-results"]/tbody/tr['+row+']/td[7]')).text();
+						eboxType = $(byXpath('//*[@id="search-results"]/tbody/tr['+row+']/td[3]')).text();
+						//BIR exception
+						LocalDate birDate = LocalDate.parse(st.ebox_date,eboxDateFormat);
+						birDate = birDate.minusDays(1);
+						String eboxTransPwdDate = birDate.format(eboxDateFormat);
+						
+						if(eboxTransDate.equals(st.ebox_date) || (eboxType.equals("BIR") && eboxTransDate.equals(eboxTransPwdDate))){
+							
+							//println("date matched")
+							$(byXpath('//*[@id="search-results"]/tbody/tr['+row+']/td[1]/a')).click(); //click on info
+							
+							sleep(3000)
+							
+							//compare if ebox records match with MA files records
+							String branch = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[5]')).text();
+							String acc = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[6]')).text();
+							String amt_str = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[7]')).text();
+							amt_str = amt_str.replace(",","");
+							double amt = Double.parseDouble(amt_str)
+							
+							if(amt.equals(st.amount)){
+								if(acc.contains(st.ebox_acc_num)){
+									if(branch.equals(st.ebox_branch)){
+										log.info("Record Matched")
+										
+										String credit_narrative = "REFUND "+eboxTransDate;
+										
+										report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"","","")); //add cr narrative
+										
+									}
+									else{
+										log.info("Branch Number does not match");
+									}
+								}
+								else{
+									log.info("Acount Number does not match");
+								}
+							}
+							else{
+								log.info("Amount does not match");
+							}
+							
+							//return to search page
+							$(byXpath('/html/body/div[3]/div[8]/input')).click(); //ok
+							found = true;
+							
+						}
+						
+						
+						
+						
+						
+						row--;
+					}
+					if(found){
+						//return to query
+						$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
+					}
+					else if(!found){
+						log.info("No Transaction found for post date: "+st.ebox_date);
+						$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
+					
+					}
+				
+				}
+			}
 			 
+			///////////////////////////////////////////////////////////////EBOX//////////////////////////////////////////////////////////////////////////
+			log.info("SIZE of IBK FOUND->"+report.size());
+			
+			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
+			try{
+				//TO(DATE EXCEL)
+				File outputFile2 = new File(monthly_path+dateExcel+".xlsx"); 
+				FileInputStream fisi2 = new FileInputStream(outputFile2);
+						
+				XSSFWorkbook outputWorkbook2 = new XSSFWorkbook(fisi2);
+				XSSFSheet outputSheet2 = outputWorkbook2.getSheetAt(0);	//change sheet name
+				
+				int outputRowCount2 = outputSheet2.getLastRowNum();//GET LAST OUTPUT EXCEL ROW
+				
+				String debit_branch = "23";
+				String debit_acc = "9503284";
+				Iterator itr=report.iterator();
+				while(itr.hasNext()){
+					IBK st=(IBK)itr.next();
+				//for(int i=0; i < excelAccNumArr.size(); i++){
+				
+					//date
+					outputSheet2.createRow(outputRowCount2+1).createCell(0).setCellValue(karanLocal.toString());
+					//debit branch
+					outputSheet2.getRow(outputRowCount2+1).createCell(1).setCellValue(debit_branch);
+					//debit account number
+					outputSheet2.getRow(outputRowCount2+1).createCell(2).setCellValue(debit_acc);
+					//debit narrative
+					outputSheet2.getRow(outputRowCount2+1).createCell(3).setCellValue(st.deb_narrative);
+					//credit branch
+					outputSheet2.getRow(outputRowCount2+1).createCell(4).setCellValue(st.ebox_branch); //add credit branch
+					//credit account number
+					outputSheet2.getRow(outputRowCount2+1).createCell(5).setCellValue(st.ebox_acc_num);
+					//credit narrative
+					outputSheet2.getRow(outputRowCount2+1).createCell(6).setCellValue(st.cred_narrative);
+					//amount
+					outputSheet2.getRow(outputRowCount2+1).createCell(7).setCellValue(st.amount);
+					
+					outputRowCount2++;
+				}
+				
+				FileOutputStream fos2 = new FileOutputStream(outputFile2);
+				fisi2.close();
+				outputWorkbook2.write(fos2);
+				fos2.close();
+				
+				log.info("Successfully written to Date Excel");
+				
+
+				//move morongwa swift to daily folder
+				File morongwaFileDaily = new File(morongwaFileDailyPath);
+				Files.move(morongwaFile.toPath(), morongwaFileDaily.toPath());//move
+						
+			}catch(Exception e){
+
+				log.info("Failed to write to Date Excel"+e);
+				//loginta.append("Failed to write to Date Excel");
+				//loginta.newLine();
+			} 
+			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
+			 
+			 */
+			class IBK{
+				String cred_account_num;
+				double amount;
+				String deb_narrative;
+				String cred_narrative;
+				String bo_name;
+				String ebox_date;
+				String ebox_acc_num;
+				String ebox_branch;
+ 
+				IBK(String cred_account_num,double amount,String deb_narrative,String cred_narrative,String bo_name,String ebox_date,String ebox_acc_num,String ebox_branch){  
+					this.cred_account_num=cred_account_num;    
+					this.amount=amount;  
+					this.deb_narrative=deb_narrative;  
+					this.cred_narrative=cred_narrative;  
+					this.bo_name=bo_name;  
+					this.ebox_date=ebox_date;  
+					this.ebox_acc_num=ebox_acc_num;  
+					this.ebox_branch=ebox_branch;  
+				}  
+			} 
+			
 			
 			]]></script>
 	
