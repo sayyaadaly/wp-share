@@ -446,7 +446,7 @@
 				DataFormatter formatter1 = new DataFormatter();
 				value1 = formatter1.formatCellValue(cellData1);
 
-				if(value1.contains("IBK")){
+				if(value1.contains("IBK FILE")){
 					//println("----------------------------")
 					
 					//sleep(5000)
@@ -492,6 +492,7 @@
 							break;
 						}
 						
+						//REMOVE DUPLICATES------->PUT IN SAME CASE
 						
 						//by order of(name of person..)
 						if(accountDetailsRawArr[i].contains("//BO ")){
@@ -500,6 +501,13 @@
 							String name = accountDetailsRawArr[i]
 							name = name.substring(nameIndex+4, name.length());
 							swiftBOName = name.trim();
+							if(!accountDetailsRawArr[i+1].contains("//IFO")){
+								swiftBOName += accountDetailsRawArr[i+1].trim();
+								if(!accountDetailsRawArr[i+2].contains("//IFO")){
+									swiftBOName += accountDetailsRawArr[i+1].trim();
+								}
+								swiftBOName = swiftBOName.replace("//","");
+							}
 							//println(swiftBOName)
 							
 						}
@@ -510,6 +518,13 @@
 							String name = accountDetailsRawArr[i]
 							name = name.substring(nameIndex+4, name.length());
 							swiftBOName = name.trim();
+							if(!accountDetailsRawArr[i+1].contains("//IFO")){
+								swiftBOName += accountDetailsRawArr[i+1].trim();
+								if(!accountDetailsRawArr[i+2].contains("//IFO")){
+									swiftBOName += accountDetailsRawArr[i+1].trim();
+								}
+								swiftBOName = swiftBOName.replace("//","");
+							}
 							//println(swiftBOName)
 							
 						}
@@ -688,23 +703,75 @@
 								}
 								//validation BO
 								else{
-									String[] boNameArr = st.bo_name.split("\\s+");
-									//println("BO NAME--> "+st.bo_name)
+									ArrayList boNameArr = st.bo_name.split("\\s+");
+									println(boNameArr)
 									int count = 0;
+									
 									for(int i = 0; i < boNameArr.size(); i++){
-										String temp = boNameArr[i].trim();
-										if(boNameArr[i].length() > 1){ //skip one letter 
-											if(bo.contains(boNameArr[i])){
-												//println("matched "+boNameArr[i])
-												count++;
+										//println(boNameArr[i])
+										//remove all one letter
+										String tempBO = boNameArr[i].trim()
+										if(tempBO.length() == 1 || tempBO.length() == 2){ 
+											boNameArr.remove(boNameArr[i]);
+										}
+										//remove duplicates(test further--only if duplicate is next to it)
+										if(boNameArr[i+1] != null){ 
+											if(boNameArr[i+1].contains(tempBO)){
+												boNameArr.remove(boNameArr[i]);
 											}
 										}
 									}
-									if(count >= 2){
-										matchedBO = true;
-										println("MATCHED BO-->"+st.bo_name)
-										println("BO DETAILS-->"+bo)
+									
+									//match bo name by parts
+									for(int i = 0; i < boNameArr.size(); i++){
+										String temp = boNameArr[i].trim();
+										if(bo.contains(temp)){
+											//println("matched "+boNameArr[i])
+											count++;
+										}
+										
 									}
+									if(boNameArr.size() == 1){
+										if(count == 1){
+											matchedBO = true;
+											println("MATCHED BO-->"+st.bo_name)
+											println("BO DETAILS-->"+bo)
+											println("BO ARRAY-->"+boNameArr);
+										}
+									}
+									else if(boNameArr.size() > 1 && boNameArr.size() <= 3){
+										if(count >= 2){
+											matchedBO = true;
+											println("MATCHED BO-->"+st.bo_name)
+											println("BO DETAILS-->"+bo)
+											println("BO ARRAY-->"+boNameArr);
+										}
+									}
+									else if(boNameArr.size() > 3 && boNameArr.size() <= 4){
+										if(count >= 3){
+											matchedBO = true;
+											println("MATCHED BO-->"+st.bo_name)
+											println("BO DETAILS-->"+bo)
+											println("BO ARRAY-->"+boNameArr);
+										}
+									}
+									else if(boNameArr.size() >= 5 && boNameArr.size() > 7){
+										if(count >= 4){
+											matchedBO = true;
+											println("MATCHED BO-->"+st.bo_name)
+											println("BO DETAILS-->"+bo)
+											println("BO ARRAY-->"+boNameArr);
+										}
+									}
+									else if(boNameArr.size() >= 7){
+										if(count >= 5){
+											matchedBO = true;
+											println("MATCHED BO-->"+st.bo_name)
+											println("BO DETAILS-->"+bo)
+											println("BO ARRAY-->"+boNameArr);
+										}
+									}
+									
 								} 
 								 
 								if(matchedBO){ //missing screnario-> where there is no acc number or name in swift, then there will be a blank space 
