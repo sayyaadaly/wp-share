@@ -1,0 +1,22 @@
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+			<capability name="chromeOptions">
+				<script return="chromeArgs"><![CDATA[
+					import org.openqa.selenium.chrome.ChromeOptions;
+					String dl_path = "";
+					ChromeOptions options = new ChromeOptions();
+					Map<String,Object> prefs = new HashMap<String,Object>();
+					prefs.put("download.default_directory","C:\\Users\\RB-MU_Robot_VPC_01\\Desktop\\Downloard File");
+					options.setExperimentalOption("prefs",prefs)
+					chromeArgs = options;
+				 ]]></script>
+			</capability>
+		<script><![CDATA[
+
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+	
