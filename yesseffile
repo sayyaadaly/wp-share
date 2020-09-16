@@ -21,6 +21,23 @@
 <robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
 			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
 			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+			
+			<capability name="chromeOptions">
+				<script return="chromeArgs"><![CDATA[
+					
+					//DONWLOAD PATH [put path in datastore in this format-->\\muebcyp02fvg02\eProcessing1$\ROBOTICS\SFI Refund\config\Open]
+					String download_path = links.get(0).getAt("download_path").toString();
+					
+					import org.openqa.selenium.chrome.ChromeOptions;
+					String dl_path = "";
+					ChromeOptions options = new ChromeOptions();
+					Map<String,Object> prefs = new HashMap<String,Object>();
+					prefs.put("download.default_directory",download_path);
+					options.setExperimentalOption("prefs",prefs)
+					chromeArgs = options;
+				 ]]></script>
+			</capability>
+			
 		<script><![CDATA[
 		
 			//robot checks for records for previous working day-->e.g FRI 24/07 robot puts criteria 23 12:00 AM and 24 12:00 AM, checks for IBK then compare with MA Files for 23
@@ -44,16 +61,16 @@
 			//delete morongwa excel after use or move to daily folder-->move default downloads to daily folder	09/09/20
 			//201 ADD REFUND NARRATIVE TO 201 FILES-->used REFUND as narrative--temp 04/09/20
 			//EBOX IF BIR, CHECK IF TRANSACTION DATE IS SAME OR ONE DAY BEFORE 04/09/20-->test further
-			
+			//EBOX if there are 2 transactions for the same date with the same amount--> taking both-->enter transaction to check for counterparty 16/09/20
+			//EBOX counterparty acc num in swift are written manually, so sometimes it might miss some digits in front or at the end-->dont take last digit, compare with middle 6 digits 19/09/20 
+
 			//auth 21/08/20-->test further if key changes
-			
-						
+					
 			//search reference is name
 			//MA Files will they be in monthly folders?
 			
+			
 			//MORONGWA date scenario to run 1030 and 1600
-			
-			
 			
 			//date
 			import java.time.LocalDate;
@@ -92,9 +109,10 @@
 			
 			//sorting of array
 			import java.util.Comparator;
+			import org.apache.commons.lang.ArrayUtils;
 			
 			//DATE
-			LocalDate karanLocal    = LocalDate.parse("2020-09-01"); 							
+			LocalDate karanLocal    = LocalDate.parse("2020-09-03"); 							
 			//LocalDate karanLocal    = LocalDate.now()		
 			LocalDate pwd		    = karanLocal.minusDays(1);										//live
 			LocalDate second_pwd	= pwd.minusDays(1);
@@ -109,6 +127,7 @@
 			DateTimeFormatter folder201DateFormat     	= DateTimeFormatter.ofPattern("MMMM-dd");
 			DateTimeFormatter file201DateFormat     	= DateTimeFormatter.ofPattern("yyyy/MM/dd");
 			
+			
 			//folder and file format
 			DateTimeFormatter yearlyFolderFormat = DateTimeFormatter.ofPattern("YYYY");
 			DateTimeFormatter monthlyFolderFormat = DateTimeFormatter.ofPattern("MM MMMM");
@@ -120,6 +139,7 @@
 			DateTimeFormatter dateExcelFormat = DateTimeFormatter.ofPattern("MMMM "+"yyyy");
 			String dateExcel  = karanLocal.format(dateExcelFormat);
 			DateTimeFormatter MAFileBODateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+			
 			
 			String tayme = karanLocal.toString() + " " + kLDT.getHour().toString()+ "_" + kLDT.getMinute().toString()
 			
@@ -217,6 +237,7 @@
 				
 			}
 			//SECOND PREVIOUS WORKING DAY
+			second_pwd = pwd.minusDays(1); // reinitialise second previous day
 			boolean validSecondPwd = false;
 			while(!validSecondPwd){
 				
@@ -294,7 +315,18 @@
 					
 			}
 			
-			/* 
+			//LOG FILE
+			FileWriter fr = new FileWriter(daily_path+"log.txt", true);
+			BufferedWriter loginta = new BufferedWriter(fr);
+			
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.append(tayme);
+			loginta.newLine();
+			loginta.append("Previous Working Day is: ");
+			loginta.append(pwd.toString());
+			loginta.newLine();
+			loginta.newLine();
 			
 			
 			 
@@ -320,46 +352,101 @@
 			$(byXpath('//*[@id="morongwa-aro"]')).click();
 			sleep(5000);
 			
-			//MESSAGES
+			println("Hour of the day"+kLDT.getHour())
 			
-			//SYSTEM DATE--from--if pwd is friday or public holiday
-			String morongwaPwDate = pwd.format(morongwaQueryDateFormat);
-			if(pwd != karanLocal.minusDays(1)){
-				//change month
+			//MORNING RUN 
+			if(kLDT.getHour() < 12){
+				//SYSTEM DATE--from
+				//click on datepicker
 				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[1]')).click();
-				if(pwd.getMonth() != karanLocal.getMonth()){
-					$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[2]/i[1]')).click();
+				//--if pwd is friday or public holiday
+				String morongwaPwDate = pwd.format(morongwaQueryDateFormat);
+				if(pwd != karanLocal.minusDays(1)){
+					//change month
+					if(pwd.getMonth() != karanLocal.getMonth()){
+						$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[2]/i[1]')).click();
+					}
+					$(byText(morongwaPwDate)).click();
 				}
-				$(byText(morongwaPwDate)).click();
-				//$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[1]')).click();
-				//$(byAttribute('class','wc-date-container')).click();
+				//choose pwd evening time
+				//click on time change
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[1]/div[4]/div/span')).click();
+				//hour 
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[1]/input')).text("04");
+				//min
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[3]/input')).text("00");
+				//pm
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[2]/div/button[2]')).click();
+				sendKeys(Keys.PAGE_DOWN);
+				sleep(1000);
+				//set time
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[3]')).click();
+				sleep(1000);
+				//done
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[6]/div')).click();
+			
+			
+				//SYSTEM DATE--to
+				//choose system date
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select')).click(); 
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select/option[20]')).click(); 
+				sleep(1000);
+				//choose operator(less than)
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select')).click();
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select/option[3]')).click();
+				sleep(1000);
+				
+				
 			}
 			
-			//SYSTEM DATE--to
-			//choose system date
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select')).click(); 
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select/option[20]')).click(); 
-			sleep(1000);
-			//choose operator
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select')).click();
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select/option[3]')).click();
-			sleep(1000);
-			//choose date/time
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[1]')).click();
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[1]/div[4]/div/span')).click();
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[1]/input')).text("11");
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[3]/input')).text("00");
-			sleep(1000);
-			//am
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[2]/div/button[1]')).click();
-			sleep(1000);
-			//pm
-			//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[2]/div/button[2]
-			sendKeys(Keys.PAGE_DOWN);
-			sleep(1000);
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[3]')).click();
-			sleep(1000);
-			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[6]/div')).click();
+			//EVENING RUN 
+			if(kLDT.getHour() > 14){
+				String morongwaKaranDate = karanLocal.format(morongwaQueryDateFormat);
+				//SYSTEM DATE--from
+				//click on datepicker
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[1]')).click();
+				//--if pwd is friday or public holiday
+				String morongwaPwDate = pwd.format(morongwaQueryDateFormat);
+				if(pwd != karanLocal.minusDays(1)){
+					//change month
+					if(pwd.getMonth() != karanLocal.getMonth()){
+						$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[2]/i[1]')).click();
+					}
+					$(byText(morongwaPwDate)).click();
+				}
+				//choose current morning time
+				//click on time change
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[1]/div[4]/div/span')).click();
+				//hour 
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[1]/input')).text("10");
+				//min
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[1]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[1]/div[3]/input')).text("30");
+				//am
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[2]/div/button[1]')).click();
+				sendKeys(Keys.PAGE_DOWN);
+				sleep(1000);
+				//set time
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[5]/div[3]')).click();
+				sleep(1000);
+				//choose date
+				$(byText(morongwaKaranDate)).click();
+				//done
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[4]/div[1]/angular2-date-picker/div/div[2]/div[6]/div')).click();
+			
+			
+				//SYSTEM DATE--to
+				//choose system date
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select')).click(); 
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[2]/select/option[20]')).click(); 
+				sleep(1000);
+				//choose operator(less than)
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select')).click();
+				$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/ul/li[2]/div/div[3]/select/option[3]')).click();
+				sleep(1000);
+				
+				
+			}
+			
 			
 			//ADD QUERY
 			$(byXpath('//*[@id="queryTab-panel"]/form/div/div/mor-query-builder/div[2]/label')).click();
@@ -406,7 +493,7 @@
 				$(byXpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/mor-data-export/div/button')).click();
 				$(byXpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/mor-data-export/div/div/button[1]')).click();
 				sleep(5000);
-			} */
+			}  
 			File downloadFolder = new File(download_path);
 			File[] downloadFiles = downloadFolder.listFiles();
 			for(File file : downloadFiles){
@@ -414,10 +501,10 @@
 					morongwa_path = file.toPath();
 				}
 			}
-			morongwa_path = morongwa_path.replace("\\","\\\\");
+			morongwa_path = morongwa_path.replace("\\","\\\\"); 
 		 	//////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
 			File morongwaFile = new File(morongwa_path);	
-			//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
+		 	//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
 		
 			FileInputStream fisi1 = new FileInputStream(morongwaFile);
 			XSSFWorkbook outputWorkbook1 = new XSSFWorkbook(fisi1);
@@ -636,7 +723,7 @@
 			
 			
 			//////////////////////////////////////////////////////////READ SWIFT MESSAGE//////////////////////////////////////////////////////////////////
-			  
+		 	  
 			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
 			String MAFileDatePart = karanLocal.format(MAFileDateFormat);
 			String MAFilePwdDatePart = pwd.format(MAFileDateFormat);
@@ -681,7 +768,7 @@
 						
 							String boRaw = raw_status.substring(startBo,endBo);
 							boRaw = boRaw.trim();
-							//println(boRaw.trim())
+							//println(boRaw)
 							
 							String bo = boRaw.substring(12,boRaw.length()); //remove account number and ref xxxxx
 							//println(bo)
@@ -703,34 +790,45 @@
 								}
 								//validation BO
 								else{
-									ArrayList boNameArr = st.bo_name.split("\\s+");
-									println(boNameArr)
-									int count = 0;
+									ArrayList boNameArrTmp = st.bo_name.split("\\s+");
+									ArrayList boNameArr = new ArrayList();
 									
-									for(int i = 0; i < boNameArr.size(); i++){
-										//println(boNameArr[i])
+									//println(boNameArrTmp)
+									
+									
+									for(int i =0; i < boNameArrTmp.size(); i++){
 										//remove all one letter
-										String tempBO = boNameArr[i].trim()
-										if(tempBO.length() == 1 || tempBO.length() == 2){ 
-											boNameArr.remove(boNameArr[i]);
-										}
-										//remove duplicates(test further--only if duplicate is next to it)
-										if(boNameArr[i+1] != null){ 
-											if(boNameArr[i+1].contains(tempBO)){
-												boNameArr.remove(boNameArr[i]);
+										String tempBO = boNameArrTmp[i].trim();
+										if(boNameArrTmp.size() > 4){ //if bo name has more than 4 words
+											//skip 3-letters word
+											if(tempBO.length() > 3){
+												boNameArr.add(tempBO);
 											}
 										}
-									}
-									
-									//match bo name by parts
-									for(int i = 0; i < boNameArr.size(); i++){
-										String temp = boNameArr[i].trim();
-										if(bo.contains(temp)){
-											//println("matched "+boNameArr[i])
-											count++;
+										else{
+											//skip 2-letters word
+											if(tempBO.length() > 2){
+												boNameArr.add(tempBO);
+											}
 										}
 										
 									}
+									LinkedHashSet<String> tempArr = new LinkedHashSet<>(boNameArr);
+									boNameArr = new ArrayList<>(tempArr);
+									//println(boNameArr)
+									
+									//match bo name by parts
+									int count = 0;
+									for(int i = 0; i < boNameArr.size(); i++){
+										String temp = boNameArr[i].toUpperCase().trim();
+										String boCaps = bo.toUpperCase();
+										if(boCaps.contains(temp)){
+											//println("matched "+boNameArr[i])
+											count++;
+										}										
+									}
+									//println("COUNT-->"+count)
+									
 									if(boNameArr.size() == 1){
 										if(count == 1){
 											matchedBO = true;
@@ -747,7 +845,7 @@
 											println("BO ARRAY-->"+boNameArr);
 										}
 									}
-									else if(boNameArr.size() > 3 && boNameArr.size() <= 4){
+									else if(boNameArr.size() == 4){
 										if(count >= 3){
 											matchedBO = true;
 											println("MATCHED BO-->"+st.bo_name)
@@ -755,8 +853,8 @@
 											println("BO ARRAY-->"+boNameArr);
 										}
 									}
-									else if(boNameArr.size() >= 5 && boNameArr.size() > 7){
-										if(count >= 4){
+									else if(boNameArr.size() >= 5 && boNameArr.size() < 7){
+										if(count >= 5){
 											matchedBO = true;
 											println("MATCHED BO-->"+st.bo_name)
 											println("BO DETAILS-->"+bo)
@@ -764,7 +862,7 @@
 										}
 									}
 									else if(boNameArr.size() >= 7){
-										if(count >= 5){
+										if(count >= 6){
 											matchedBO = true;
 											println("MATCHED BO-->"+st.bo_name)
 											println("BO DETAILS-->"+bo)
@@ -779,7 +877,6 @@
 									//parse branch code and account no of destination
 									ArrayList<String> trans_details = raw_status.split("\\s+");
 									//println(trans_details)
-									//trans_details.removeAll(Arrays.asList("", null));
 									String dest_branch_raw = trans_details[0];
 									//println(dest_branch_raw)
 									String dest_branch = dest_branch_raw.substring(dest_branch_raw.length()-2,dest_branch_raw.length());
@@ -791,7 +888,7 @@
 										dest_acc = dest_acc_raw.substring(0,7);
 									}
 									else{
-										println("No Account number found for "+st.bo_name); //will get error if account blank(array will remove blank space) \\s+
+										println("No Account number found for "+st.bo_name); //test if will get error if account blank(array will remove blank space-->array size will decrease) 
 									}
 
 									//parse amount and currency
@@ -809,7 +906,7 @@
 										if(st.amount == amount){
 											//println(raw_status)
 											//to make a search on ebox(MA only)
-											//println("MA bo and amount matched")
+											println("MA bo and amount matched")
 											ebox.add(new IBK(st.cred_account_num,amount,st.deb_narrative,"",st.bo_name,eboxDate,dest_acc,dest_branch)); //add cr narrative
 										}
 									}
@@ -821,7 +918,11 @@
 			}
 			
 			log.info("SIZE of SWIFT IBK->"+swift.size());
-			
+			Iterator eboxItr2=ebox.iterator();   
+			while(eboxItr2.hasNext()){
+				IBK st=(IBK)eboxItr2.next();
+				println("EBOX-->"+st.cred_account_num+" "+st.bo_name+" "+st.amount+" "+st.ebox_acc_num+" "+st.ebox_branch);
+			}
 			
 			log.info("SIZE of MA IBK->"+ebox.size());
 			
@@ -848,10 +949,10 @@
 			
 			
 			log.info("SIZE of 201 IBK TO SEARCH->"+folder201.size()); 
-		 	  
+		 	   
 			///////////////////////////////////////////////////////////READ MA MESSAGE////////////////////////////////////////////////////////////////////
-	 		//////////////////////////////////////////////////////////READ 201 MESSAGE////////////////////////////////////////////////////////////////////
-			/* String reports201FolderDate = karanLocal.format(reports201DateFormat).toUpperCase();
+	 		///////////////////////////////////////////////////////////READ 201 MESSAGE///////////////////////////////////////////////////////////////////
+			String reports201FolderDate = karanLocal.format(reports201DateFormat).toUpperCase();
 			String reports201subFolderDate = karanLocal.format(reports201subDateFormat);
 			String reports201pwdFolderDate = pwd.format(reports201DateFormat).toUpperCase();
 			String reports201pwdsubFolderDate = pwd.format(reports201subDateFormat);
@@ -903,36 +1004,24 @@
 																		boolean matchedBO = false;
 							
 																		//validation Account Number
-																		if(st.bo_name.isEmpty()){
-																			swiftSearchRefTrimmed = st.cred_account_num.replaceFirst('^0+(?!$)', "");
-																			if(raw_status.contains(swiftSearchRefTrimmed)){
-																				matchedBO = true;
-																			}
+																		swiftSearchRefTrimmed = st.cred_account_num.replaceFirst('^0+(?!$)', "");
+																		if(raw_status.contains(swiftSearchRefTrimmed)){
+																			matchedBO = true;
+																		}
 																			
-																		}
-																		//validation BO
-																		else{
-																			String[] boNameArr = st.bo_name.split("\\s+");
-																			//println("BO NAME--> "+st.bo_name)
-																			int count;
-																			for(int i = 0; i < boNameArr.size(); i++){
-																				if(raw_status.contains(boNameArr[i])){
-																					//println("matched "+boNameArr[i])
-																					count++;
-																				}
-																			}
-																			if(count >= boNameArr.size()-2){
-																				matchedBO = true;
-																				//println("matched bo")
-																			}
-																		}
-																													
+																												
 																		if(matchedBO){
+																			String cred_acc_raw = "";
+																			String cred_branch_raw = "";
+																			String cred_acc = "";
+																			String cred_branch = "";
+																			
 																			//println(reportsSub.getAbsolutePath())
+																			//println(st.cred_account_num)
 																			ArrayList status = raw_status.split("\\s+");
 																			//process date
 																			String date201RawStr = status[status.size()-2];
-																			println(date201RawStr)
+																			//println(date201RawStr)
 																			LocalDate date201 = LocalDate.parse(date201RawStr,file201DateFormat);
 																			String date201Str = date201.format(eboxDateFormat);
 																			String credit_narrative = "REFUND "+date201Str;
@@ -949,13 +1038,21 @@
 																			amount_str = amount_str.replace(",","");
 																			double amount = Double.parseDouble(amount_str);
 																			
+																			//parse credit branch and account num
+																			cred_branch_raw = status[7];
+																			cred_acc_raw = status[8];
+																			if(cred_branch_raw != null && cred_acc_raw != null){
+																				cred_branch = cred_branch_raw.substring(cred_branch_raw.length()-2,cred_branch_raw.length());
+																				cred_acc = cred_acc_raw.substring(cred_acc_raw.length()-7,cred_acc_raw.length());
+																			}
+																			
 																			if(st.amount == amount){
-																				//println("201 amount and bo matched")
+																				println("201 amount and bo matched")
 																				match_found = true;
 																				//println(raw_status)
-																				println(reportsSub.getAbsolutePath())
-																				
-																				report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"","","")); //add cr narrative
+																				//println(reportsSub.getAbsolutePath())
+																				//println(st.cred_account_num)
+																				report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"",cred_acc,cred_branch)); 
 																			
 																				
 																			}
@@ -986,8 +1083,8 @@
 			
 			//////////////////////////////////////////////////////////READ 201 MESSAGE////////////////////////////////////////////////////////////////////
 			log.info("SIZE of 201 IBK FOUND->"+report.size());
-			  */
-			/* ///////////////////////////////////////////////////////////////EBOX//////////////////////////////////////////////////////////////////////////
+			  
+		 	///////////////////////////////////////////////////////////////EBOX//////////////////////////////////////////////////////////////////////////
 			//if records found of MA files, go through ebox 
 			if(ebox.size() > 0){
 			
@@ -1021,10 +1118,9 @@
 				Iterator itr=ebox.iterator();
 				while(itr.hasNext()){
 					IBK st=(IBK)itr.next();
-					//println("EBOX-->"+st.cred_account_num+" "+st.amount)
-				//for(int j = 0; j < eboxAccNumArr.size(); j++){
 					
 					log.info("Searching for Acc Num: "+st.cred_account_num);
+
 				
 					$(byXpath('//*[@id="first"]/form/table/tbody/tr/td[2]/select/option[4]')).click(); //originator
 					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[1]/td[2]/input')).clear(); //branch id clear
@@ -1032,9 +1128,9 @@
 					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[2]/td[2]/input')).clear(); //acc number clear
 					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[2]/td[2]/input')).sendKeys(st.ebox_acc_num); //acc number
 					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[1]')).clear(); //amount 1 clear
-					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[1]')).sendKeys(eboxFormat.format(st.amount)); //amount 1
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[1]')).sendKeys(String.format("%.2f", st.amount)); //amount 1
 					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[2]')).clear(); //amount 2 clear
-					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[2]')).sendKeys(eboxFormat.format(st.amount)); //amount 2
+					$(byXpath('//*[@id="originator"]/form/table/tbody/tr[3]/td[2]/input[2]')).sendKeys(String.format("%.2f", st.amount)); //amount 2
 					$(byXpath('//*[@id="originator"]/form/div[1]/input')).click(); //search
 					
 					
@@ -1077,6 +1173,7 @@
 						birDate = birDate.minusDays(1);
 						String eboxTransPwdDate = birDate.format(eboxDateFormat);
 						
+						
 						if(eboxTransDate.equals(st.ebox_date) || (eboxType.equals("BIR") && eboxTransDate.equals(eboxTransPwdDate))){
 							
 							//println("date matched")
@@ -1089,17 +1186,32 @@
 							String acc = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[6]')).text();
 							String amt_str = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[7]')).text();
 							amt_str = amt_str.replace(",","");
-							double amt = Double.parseDouble(amt_str)
+							double amt = Double.parseDouble(amt_str);
+							String acc_counterparty = $(byXpath('/html/body/div[3]/div[5]/table[2]/tbody/tr[2]/td[7]')).text();
 							
-							if(amt.equals(st.amount)){
-								if(acc.contains(st.ebox_acc_num)){
-									if(branch.equals(st.ebox_branch)){
-										log.info("Record Matched")
+							//VALIDATIONS
+							if(amt.equals(st.amount)){ //amount
+								if(acc.contains(st.ebox_acc_num)){ //originator account number
+									if(branch.equals(st.ebox_branch)){ //originator branch
 										
-										String credit_narrative = "REFUND "+eboxTransDate;
-										
-										report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"","","")); //add cr narrative
-										
+										if(!acc_counterparty.isEmpty()){
+											println("acc_counterparty-->"+acc_counterparty)
+											//last check--account number of counterparty(from swift)
+											acc_counterparty = acc_counterparty.substring(0,acc_counterparty.length()-4) //remove MUR + 1 additional 
+											acc_counterparty = acc_counterparty.substring(acc_counterparty.length()-6,acc_counterparty.length()) //take only first 6 digits to compare
+											acc_counterparty = acc_counterparty.replaceFirst('^0+(?!$)', "");
+											println(st.cred_account_num)
+											println(acc_counterparty)
+											if(st.cred_account_num.contains(acc_counterparty)){ //if counterparty from ebox matches that of swift message
+												log.info("Record Matched");
+												String credit_narrative = "REFUND "+eboxTransDate;
+											
+												report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"",st.ebox_acc_num,st.ebox_branch)); //add cr narrative
+											}
+											else{
+												log.info("Record with same date found");
+											}
+										}
 									}
 									else{
 										log.info("Branch Number does not match");
@@ -1114,10 +1226,11 @@
 							}
 							
 							//return to search page
-							$(byXpath('/html/body/div[3]/div[8]/input')).click(); //ok
+							//$(byXpath('/html/body/div[3]/div[8]/input')).click(); //ok
+							$(byAttribute('value','OK')).click(); // OK
 							found = true;
 							
-						}
+						} 
 						
 						
 						
@@ -1127,12 +1240,13 @@
 					}
 					if(found){
 						//return to query
-						$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
+						//$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
+						$(byAttribute('value','Search Again')).click(); // SEARCH AGAIN
 					}
 					else if(!found){
 						log.info("No Transaction found for post date: "+st.ebox_date);
-						$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
-					
+						//$(byXpath('/html/body/div[3]/div[2]/form[1]/input')).click(); //search again
+						$(byAttribute('value','Search Again')).click(); // SEARCH AGAIN
 					}
 				
 				}
@@ -1140,7 +1254,7 @@
 			 
 			///////////////////////////////////////////////////////////////EBOX//////////////////////////////////////////////////////////////////////////
 			log.info("SIZE of IBK FOUND->"+report.size());
-			
+		 
 			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
 			try{
 				//TO(DATE EXCEL)
@@ -1157,7 +1271,6 @@
 				Iterator itr=report.iterator();
 				while(itr.hasNext()){
 					IBK st=(IBK)itr.next();
-				//for(int i=0; i < excelAccNumArr.size(); i++){
 				
 					//date
 					outputSheet2.createRow(outputRowCount2+1).createCell(0).setCellValue(karanLocal.toString());
@@ -1168,7 +1281,7 @@
 					//debit narrative
 					outputSheet2.getRow(outputRowCount2+1).createCell(3).setCellValue(st.deb_narrative);
 					//credit branch
-					outputSheet2.getRow(outputRowCount2+1).createCell(4).setCellValue(st.ebox_branch); //add credit branch
+					outputSheet2.getRow(outputRowCount2+1).createCell(4).setCellValue(st.ebox_branch); 
 					//credit account number
 					outputSheet2.getRow(outputRowCount2+1).createCell(5).setCellValue(st.ebox_acc_num);
 					//credit narrative
@@ -1198,8 +1311,12 @@
 				//loginta.newLine();
 			} 
 			//////////////////////////////////////////////////////////WRITE TO REPORT////////////////////////////////////////////////////////////////////
-			 
-			 */
+			  
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.newLine();
+			loginta.close(); 
+				
 			class IBK{
 				String cred_account_num;
 				double amount;
