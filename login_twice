@@ -1,0 +1,27 @@
+for (int c = 0; c < 2; c++){
+    //LOGIN
+    pageLoadTimeout(100000);
+    openChrome(makola_portal);
+    $(byXpath("//*[@id='username']")).sendKeys(username1);
+    $(byXpath("//*[@id='password']")).sendKeys(password1);
+    pageLoadTimeout(100000);
+    $(byXpath("//*[@id='kc-login']")).click();
+
+    sleep(10000);
+
+    try{
+      login_capture_pass = $(byXpath("//*[@id='payment-capture']")).is(EXIST);
+    }catch(Exception e){
+      login_capture_pass = false;
+    }
+    if(login_capture_pass){break;}
+				
+}
+		
+if(!login_capture_pass){
+  log.info("Payment Officer Login failed twice. Stopping transaction");
+  loginta.append(karanLocal.toString());
+  loginta.newLine();
+  loginta.append("Payment Officer Login failed twice. Stopping transaction");
+  loginta.newLine();
+}
