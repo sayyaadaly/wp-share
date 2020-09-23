@@ -1,0 +1,98 @@
+Dim SavePath
+Dim subj
+Dim subj2
+Dim FileExtension
+Dim subji
+Dim file_count
+
+SavePath = "\\muebcyp02fvg02\eProcessing1$\CEB Bill Payment\config\Open\" 'Change path
+
+a = DatePart("m", date())
+if a<10 then
+a="0"&a
+End If
+b = Day(Date())
+c = Year(Date())
+if b<10 then
+b="0"&b
+End If
+
+
+DDMMYYYY = b &  a  & c
+YYYYMMDD = c  & a  & b	
+
+'create text file
+Set FSO = CreateObject("Scripting.FileSystemObject")
+Set File = FSO.CreateTextFile(SavePath+"\temp.txt",True)			
+file_count = 0
+
+For xFactor = 0 to 5
+
+	FileExtension = "ARmessage"
+
+	Set objOutlook = CreateObject("Outlook.Application")
+	Set objNamespace = objOutlook.GetNamespace("MAPI")
+	Set objFolder = objNamespace.GetDefaultFolder(6) 'Inbox
+
+	Set colItems = objFolder.Items
+	Set colFilteredItems = colItems.Restrict("[Unread]=true")
+	'Set colFilteredItems = colItems.Restrict("[ReceivedTime]='"+now.ToShortDateString+"'") 'added 31/08/20
+	
+	'problem--> only taking 2 mails into consideration(starting from latest)-->wont take for current day if there are for previous days
+
+	For Each objMessage In colFilteredItems
+		subji = objMessage.subject
+		'msgbox subji
+		
+		'PROCESSED OR NOT PROCESSED
+		If inStr(subji,"NOT PROCESSED:ABSA_ERR") = 0 Then 'filter out not processed
+			If inStr(subji,"PROCESSED:ABSA_ERR") > 0 Then 'filter in processed 
+				
+				'msgbox subji
+				intCount = objMessage.Attachments.Count
+				senderx = objMessage.Sender.Address
+				ccx = objMessage.CC
+				found = true
+				
+				'Write to temp file
+				File.Write "P"
+				File.Write " "
+				File.Write objMessage.ReceivedTime
+				File.Write vbcrlf
+				
+				'Download attachment
+				If intCount > 0 Then
+					For i = 1 To intCount
+							
+							'objMessage.Attachments.Item(i).SaveAsFile SavePath & "\process_file_" & file_count & ".txt"
+							objMessage.Attachments.Item(i).SaveAsFile SavePath &  _
+							objMessage.Attachments.Item(i).FileName
+										
+					Next
+					objMessage.Unread = False
+				End If
+			End If
+		End If
+		
+		'NO ERROR FILES 
+		If inStr(subji,"NO CEB ERROR FILES PROCESSED")  Then	'filter in no error files
+			
+			'msgbox subji
+			
+			
+			'Write to temp file
+			File.Write "N"
+			File.Write " "
+			File.Write objMessage.ReceivedTime
+			File.Write vbcrlf
+			objMessage.Unread = False
+			
+		End If
+		
+		
+	Next
+
+Next
+
+'close temp file
+File.Close	
