@@ -1,0 +1,18 @@
+Public Function GetStringInParens(search_str As String)
+Dim regEx As New VBScript_RegExp_55.RegExp
+Dim matches
+    GetStringInParens = ""
+    regEx.Pattern = "([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))"
+    regEx.Global = True
+    If regEx.test(search_str) Then
+        Set matches = regEx.Execute(search_str)
+        GetStringInParens = matches(0).SubMatches(0)
+    End If
+End Function
+
+Sub test()
+ 
+Debug.Print GetStringInParens("asdasdasdqasd:2020-09-16Tasdasd")
+
+
+End Sub
