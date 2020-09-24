@@ -1,0 +1,57 @@
+
+
+Public Function GetStringInParens(search_str As String)
+Debug.Print search_str
+
+
+
+
+
+Dim regEx As New VBScript_RegExp_55.RegExp
+Dim matches
+    GetStringInParens = ""
+    regEx.Pattern = "([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))"
+    regEx.Global = True
+    If regEx.test(search_str) Then
+        Set matches = regEx.Execute(search_str)
+        GetStringInParens = matches(0).SubMatches(0)
+    End If
+End Function
+
+Sub test()
+ 
+Debug.Print GetStringInParens("asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ")
+
+
+End Sub
+
+
+
+Function FindN(sFindWhat As String, sInputString As String, N As Integer) As Integer
+Dim J As Integer
+Application.Volatile
+FindN = 0
+For J = 1 To N
+FindN = InStr(FindN + 1, sInputString, sFindWhat)
+If FindN = 0 Then Exit For
+Next
+End Function
+
+
+Sub test3()
+ 
+pos1 = FindN("File:", "asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ", 1)
+pos2 = FindN("Total", "asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ", 1)
+
+
+
+
+Debug.Print "Answer: " & Mid("asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ", pos1 + 5, ((pos2 - 1) - (pos1 + 5)))
+
+pos3 = FindN("File:", "asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ", 2)
+
+pos4 = Len("asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ") - (pos3 + 4)
+
+Debug.Print "Answer: " & Right("asdasdasdqasd:2020-09-16Tasdasd File:0 Total asdasdasd File:0.00 ", pos4)
+
+End Sub
