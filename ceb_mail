@@ -8,6 +8,10 @@ Dim global_counter
 Dim date_payment
 Dim num_trans_payment
 Dim amount_payment
+Dim num_records_pos_start_payment
+Dim num_records_pos_end_payment
+Dim amount_pos_start_payment
+Dim amount_pos_end_payment
 Dim date_error
 Dim date_no_error
 Dim num_records_pos_start_error
@@ -76,6 +80,12 @@ myRegExp.IgnoreCase = True
 myRegExp.Global = True
 myRegExp.Pattern = "([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))"
 
+'Regex
+Set myRegExp2 = New RegExp
+myRegExp2.IgnoreCase = True
+myRegExp2.Global = True
+myRegExp2.Pattern = "([12]\d{3}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01]))"
+
 
 FileExtension = "ARmessage"
 
@@ -105,44 +115,28 @@ For i = colFilteredItems.Count To 1 Step -1
 		num_trans_payment = ""
 		amount_payment = ""
 		
-		'get date from payment file
-		For counter = 1 To Len(body_bam_bam)
-			If Mid(body_bam_bam, counter, 1) >= "0" And Mid(body_bam_bam, counter, 1) <= "9" Then
-				date_payment_temp = date_payment_temp + Mid(body_bam_bam, counter, 1)
-				If (Mid(body_bam_bam, counter+1, 1) = " ") Then
-					global_counter = counter+1
-					Exit For
-				End If
-			End If
+		'get date from error file via regex in yyyy-MM-dd
+		Set myMatches2 = myRegExp2.Execute(body_bam_bam)
+		For Each myMatch in myMatches2
+			date_payment = myMatch.Value
 		Next
-		date_payment = Left(date_payment_temp,4) & "-" & Mid(date_payment_temp,5,2) & "-" & Right(date_payment_temp,2) 'get date in standard format yyyy-MM-dd
+		date_payment = Left(date_payment,4) & "-" & Mid(date_payment,5,2) & "-" & Right(date_payment,2) 'get date in standard format yyyy-MM-dd
 		'MsgBox date_payment
 		
-		'get number of transactions in payment file
-		For counter = global_counter To Len(body_bam_bam)
-			If Mid(body_bam_bam, counter, 1) >= "0" And Mid(body_bam_bam, counter, 1) <= "9" Then
-				num_trans_payment = num_trans_payment + Mid(body_bam_bam, counter, 1)
-				If (Mid(body_bam_bam, counter+1, 1) = " ") Then
-					global_counter = counter+1
-					Exit For
-				End If
-			End If
-		Next
+		'get number of records in error file
+		num_records_pos_start_payment = FindN("File:", objMessage.body,1)
+		num_records_pos_end_payment = FindN("Total", objMessage.body,1)
+		num_trans_payment = Mid(objMessage.body,num_records_pos_start_payment+5,((num_records_pos_end_payment - 1) - (num_records_pos_start_payment + 5)))
 		'MsgBox num_trans_payment
 		
-		'get amount from payment file
-		For counter = global_counter To Len(body_bam_bam)
-			If Mid(body_bam_bam, counter, 1) >= "0" And Mid(body_bam_bam, counter, 1) <= "9" Then
-				amount_payment = amount_payment + Mid(body_bam_bam, counter, 1)
-				If (Mid(body_bam_bam, counter+1, 1) = " ") Then
-					Exit For
-				End If
-			End If
-		Next
-		amount_payment = Left(amount_payment,Len(amount_payment)-2) & "." & Right(amount_payment,2)
-		'MsgBox amount_payment
+		'get amount in error file
+		amount_pos_start_payment = FindN("File:", objMessage.body, 2)
+		amount_pos_end_payment = Len(objMessage.body) - (amount_pos_start_payment + 4)
+		amount_error = Right(objMessage.body, amount_pos_end_payment)
+		'MsgBox amount_error
 		
 		
+		'save mail message
 		objMessage.SaveAs SavePath & "payment_file_" & date_payment & ".msg"
 		
 		'write to payment.xlsx
