@@ -1,0 +1,908 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+<var-def name="links">
+	<datastore name="ceb_billing">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
+
+<var-def name="ph">
+		<datastore name="public_holidays">
+			SELECT * from @this
+		</datastore>
+</var-def>
+
+<secrets-vault-get alias="makola_capture_officer" />
+<secrets-vault-get alias="makola_supervisor_officer" />
+<secrets-vault-get alias="ebox_portal" />
+		
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+		<script><![CDATA[
+			
+			//added read from mail-vbs 08/07/20
+			//added loop in mail script 08/07/20
+			//added read .new file and put id and amount in hash 09/07/20
+			//added parseCsv and put id and amount in hash 09/07/20
+			//added download report on ebox 09/07/20
+			//will get null in details_map_mail if .new file not correct 09/07/20
+			//compare mail text file and payment excel 10/07/20
+			//not getting file after download 13/07/20
+			//add date filter to Payment file 14/07/20
+			//put pageLoadTimeout while clicking on submit for auth makola maker 17/07/20
+			//error while choosing bill payment makola line 325 20/07/20-> fill reference first then choose bil payment
+			//add mail script 20/07/20
+			//delete payment file after execution 21/07/20
+			//if monthly excel not found copy template excel file to monthly folder 22/07/20
+			//add not processed to excel in comments 22/07/20
+			
+			//move error file to daily folder after exe 22/07/20----to test
+			
+			//download wait time fixed->try dyna
+			//add log
+			
+			
+			
+
+			//date in payment file is in DD MM YYYY format
+			//bill_payment_excel_template.xlsx is copied to monthly folder(not taken as template only)
+			
+			//date
+			import java.time.LocalDate;
+			import java.time.LocalDateTime;
+			import java.time.ZoneId;
+			import java.time.format.DateTimeFormatter
+			import java.util.*;
+			import java.text.SimpleDateFormat;			
+			//read text
+			import java.io.File;  
+			import java.io.FileNotFoundException; 
+			import java.util.Scanner;
+			import java.util.*;			
+			//read csv
+			import org.apache.commons.csv.CSVFormat;
+			import org.apache.commons.csv.CSVParser;
+			import org.apache.commons.csv.CSVRecord;
+			import java.io.IOException;
+			import java.io.Reader;
+			import java.nio.file.Files;
+			import java.nio.file.Paths;
+			//apache excel
+			import org.apache.poi.xssf.usermodel.*;
+			import org.apache.poi.ss.usermodel.*;
+			import org.apache.poi.hssf.usermodel.*;
+			import java.text.SimpleDateFormat;
+			import org.apache.poi.ss.usermodel.DateUtil
+			//files	
+			import org.apache.commons.io.FileUtils;
+			import java.io.File;
+			import java.io.FileInputStream;
+			import java.io.FileOutputStream;
+			import java.nio.file.FileSystem;
+			import java.nio.file.FileSystems;
+			import java.nio.file.Files;
+			import java.nio.file.Path;
+			import java.nio.file.StandardCopyOption;
+			//hashmap
+			import java.util.HashMap;
+			import java.util.Collections;
+			
+			//date
+			LocalDate karanLocal    = LocalDate.parse("2020-06-23"); 							//test for current date
+			//LocalDate karanLocal    = LocalDate.now()												//live
+			LocalDateTime kLDT 		= LocalDateTime.now(ZoneId.of("GMT+04:00"));				//zone timed live					
+			LocalDate oneDayBefore  = karanLocal.minusDays(1); 									//one day before
+			LocalDate pwd		    = karanLocal.minusDays(1);									//previous working day is one day before by default
+			LocalDate reversalTo    = pwd.plusDays(1);											//from which date to take reversals
+			LocalDate creditDate	= oneDayBefore;
+
+			DateTimeFormatter transDateFormat   = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+			DateTimeFormatter paymentFileDateFormat = DateTimeFormatter.ofPattern("dd MMM yyyy");
+			DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
+			DateTimeFormatter dateExcelFormat = DateTimeFormatter.ofPattern("MMMM "+"yyyy");
+			DateTimeFormatter yearlyFolderFormat = DateTimeFormatter.ofPattern("YYYY");
+			DateTimeFormatter monthlyFolderFormat = DateTimeFormatter.ofPattern("MM MMMM");
+			DateTimeFormatter dailyFolderDateFormat = DateTimeFormatter.ofPattern("dd.MM.yy");
+			String yearlyFolderStr = karanLocal.format(yearlyFolderFormat);
+			String monthlyFolderStr = karanLocal.format(monthlyFolderFormat);
+			String dailyFolderStr = karanLocal.format(dailyFolderDateFormat);
+			String tayme = karanLocal.toString() + " " + kLDT.getHour().toString()+ ":" + kLDT.getMinute().toString()
+			String dateExcel  = karanLocal.format(dateExcelFormat);
+			String karanDate  = karanLocal.format(transDateFormat);	
+				
+			////DATASTORE
+			//Dir
+			String Dir = links.get(0).getAt("path").toString();
+			//path of MS Windows Script Host
+			String vb_path = links.get(0).getAt("vb_path").toString();// C:/Windows/System32/wscript.exe
+			//MAKOLA PORTAL
+			String makola_portal = links.get(0).getAt("makola_portal").toString();
+			//ACCOUNT NUMBER
+			String acc_number = links.get(0).getAt("debit_account").toString();
+			//EBOX PORTAL
+			String ebox_portal = links.get(0).getAt("ebox_portal_link").toString();
+			//DOWNLOAD PATH
+			String download_path = links.get(0).getAt("download_path").toString();
+			
+			
+			
+			////////////////////CREATE FOLDER//////////////////////
+			//YEARLY FOLDER
+			File yearlyFolder = new File(Dir+yearlyFolderStr);
+			if(!yearlyFolder.exists()){
+			   yearlyFolder.mkdir();
+			}
+			
+			//MONTHLY FOLDER
+			File monthlyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr);
+			if(!monthlyFolder.exists()){
+				monthlyFolder.mkdir();
+			}
+				
+			//DAILY FOLDER
+			File dailyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr);
+			if(!dailyFolder.exists()){
+				dailyFolder.mkdir();   
+			}
+			////////////////////CREATE FOLDER//////////////////////
+				
+			//paths
+			String daily_path =  Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr+"//"; //"C:\\Users\\RB-Eform01\\Desktop\\2020\\07 July\\09.07.20\\"; 
+			String config_path = Dir+"config\\";
+			//String download_path = "C:\\Users\\RB-Eform01\\Downloads\\" //hc
+			//String ebox_portal = "https://eboxprdcsc.corebanking.intra.absa.co.za/csc/login.jsp"; //live
+			//String ebox_portal = "https://eboxuatcsc.corebanking.intra.absa.co.za/csc/login.jsp";   //uat
+			String ceb_acc = acc_number;
+			String payment_file_path = download_path + "Payment.csv"
+			String open_folder_path = config_path + "Open\\"; //"C:\\rpaScriptsBackup\\ceb_backup_030720\\config\\Open\\";
+			//path of vbscript
+			String mail_script = config_path+"mail_checker.vbs";
+			String tempPath = open_folder_path + "temp.txt";
+			
+			
+			//SECRETS VAULT
+			Map entryMap = secureEntryMap.getWrappedObject();
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("makola_capture_officer");
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj2 = entryMap.get("makola_supervisor_officer");
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj3 = entryMap.get("ebox_portal");
+			username1 = obj.getKey().toString();
+			password1 = obj.getValue().toString();
+			username2 = obj2.getKey().toString();
+			password2 = obj2.getValue().toString();
+			username3 = obj3.getKey().toString();
+			password3 = obj3.getValue().toString();
+			
+			//COMPARE HASHMAPS
+			HashMap<Double,Double> details_map_mail = new HashMap<Double,Double>();//transactions received in error file
+			HashMap<Double,Double> details_map_ebox = new HashMap<Double,Double>();//transactions on ebox 
+			ArrayList verify_match_arr = new ArrayList();//transactions that have been captured on Maks successfully
+			HashMap<String,Double> credit_holders_amt = new HashMap<String,Double>();//transactions captured on Maks success
+			
+			//NUMBER OF CREDITORS TO BE VERIFIED PER TRANSACTION
+			int credit_count_maks = 1;
+			
+			//REVERSAL AMOUNT
+			Double debit_reversal = 0.0;
+			Double credit_reversal;
+			
+			
+			//LIST OF PUB_HO
+			List dateList = new ArrayList();
+			for(int i = 0; i < ph.size(); i++){
+				date = ph.get(i).getAt("Date").toString();	
+				dateList.add(date);
+			}
+			
+			
+			//PREVIOUS WORKING DAY
+			boolean validPwd = false;
+			while(!validPwd){
+				
+				String pwdCheck = pwd.format(csvDateFormat);
+					 
+				//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+				if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+					pwd = pwd.minusDays(1);
+
+				}
+				//THE WEEKND
+				else if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+					//SUNDAY
+					if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+						pwd = pwd.minusDays(1);
+					}
+					
+					//SATURDAY
+					if(pwd.getDayOfWeek().toString() == "SATURDAY"){
+						pwd = pwd.minusDays(1);
+					}
+				}
+				//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+				else{
+					validPwd = true;
+				}
+			}
+			log.info("Current Day: "+karanLocal);
+			//PWD CHANGES 
+			reversalTo  = pwd.plusDays(1);
+			log.info("Previous Working Day: "+pwd);
+			
+			//PRESENCE CHECK DATE EXCEL
+			//date excel path
+			String dateExcelPath = Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dateExcel+".xlsx";
+			String dateExcelTemplatePath = Dir+"bill_payment_excel_template.xlsx";
+			File dateExcelTemplateFile = new File(dateExcelTemplatePath);
+			
+			File dateExcelFile = new File(dateExcelPath);
+			if(!dateExcelFile.exists()){
+				log.info("Creating Monthly Excel")
+				
+				Files.copy(dateExcelTemplateFile.toPath(),dateExcelFile.toPath());
+				
+				/* //Create new file
+				FileOutputStream dateFos = new FileOutputStream(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dateExcel+".xlsx");
+				Workbook dateWb = new XSSFWorkbook();
+				XSSFSheet dateSheet = dateWb.createSheet("bill_payment");
+
+				dateWb.write(dateFos);
+				dateFos.close();
+					
+				//copy header
+				openExcel(dateExcelTemplatePath);
+				setActiveCell(dateExcelTemplatePath, 'A1');
+					
+				def fileData = getRange(dateExcelTemplatePath, 'A1', 'D1');
+				openExcel(dateExcelPath);
+				setRange(dateExcelPath, 'A1', 'D1', fileData);
+				
+				saveExcel(dateExcelPath);
+					
+				closeExcel(dateExcelTemplatePath);
+				closeExcel(dateExcelPath); */
+					
+			} 
+			
+			//EXECUTE MAIL SCRIPT
+			String[] paths = new String[2];
+			paths[0] = vb_path;
+			paths[1] = mail_script;
+			
+			ProcessBuilder builder = new ProcessBuilder(paths);
+			builder.redirectErrorStream(true);
+			Process process = builder.start();
+			InputStreamReader isr = new InputStreamReader(process.getInputStream());
+			BufferedReader br = new BufferedReader(isr);
+			String output = org.apache.commons.io.IOUtils.toString(br);
+			
+			//READ TEMP TEXT FILE
+			Boolean processed = false;
+			ArrayList status_arr = new ArrayList();
+			ArrayList status_date_arr = new ArrayList();
+			File temp_file = new File(tempPath);
+			if(temp_file.exists()){
+				Scanner myReader = new Scanner(temp_file);
+				while(myReader.hasNextLine() && myReader != null){
+					
+					String status = myReader.nextLine();
+					String[] status_parts = status.split(" ");
+					status_arr.add(status_parts[0]);
+					status_date_arr.add(status_parts[1]);
+					
+				}
+				
+			}
+			
+			println(status_arr);
+			println(status_date_arr)
+			
+			/////////////////////////////////////////////PROCESSED CHECK////////////////////////////////////////////////////////
+			if(status_arr.contains("P")){
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			
+			//PROCESS TEXT FILES(RECEIVED FROM MAIL)
+			File open_folder = new File(open_folder_path);
+			File[] filesList = open_folder.listFiles();
+			for(File file : filesList){
+				if(file.getName().contains("ABSA_ERR")){
+					Scanner myReader = new Scanner(file);
+					String header = myReader.nextLine();
+					String[] header_parts = header.split("\\|");
+					 
+					ArrayList details_temp = new ArrayList();
+					String temp = "";
+					int num_trans = Integer.parseInt(header_parts[6]);
+					while(myReader.hasNextLine() && myReader != null){
+						temp = myReader.nextLine();
+						Double id_double;
+						Double amt_double;
+						//Process details
+						if(temp != null || temp != ""){
+							details_temp = temp.split("\\|");
+
+							if(details_temp[1] != null && details_temp[1] != ""){
+								id_double = Double.parseDouble(details_temp[1]);
+							}
+							if(details_temp[4] != null && details_temp[4] != ""){
+								amt_double = Double.parseDouble(details_temp[4]);
+							}
+
+							details_map_mail.put(id_double,amt_double);
+							
+						}
+					}
+					 myReader.close();
+					 
+				}
+			}
+			details_map_mail.values().removeAll(Collections.singleton(null));
+			println(details_map_mail);
+			
+			 
+		  	//////////////////////////////////////////////////EBOX/////////////////////////////////////////////////////////////
+			openChrome(ebox_portal);
+			pageLoadTimeout(100000);
+			$(byXpath("//input[@name='username']")).sendKeys(username3);
+			$(byXpath("//input[@name='j_password']")).sendKeys(password3);
+			//$(byText("corp.dsarena.com")).click();//domain
+			pageLoadTimeout(30000);
+			$(byXpath("/html/body/div[2]/form/div[2]/input")).click();//login
+			
+			//STATEMENT VIEW
+			boolean ebox_load = false;
+			try{
+			ebox_load = $(byText("Transaction Search")).is(VISIBLE);
+			}catch(Exception e){
+				refresh();
+				pageLoadTimeout(100000);
+				$(byText("Transaction Search")).click();
+			}
+			
+			if(ebox_load){
+				$(byText("Transaction Search")).click();
+			}
+			
+			//search criteria-->general
+			$(byText('Counterparty')).click();
+			sleep(3000);
+			$(byXpath('//*[@id="counterparty"]/form/table/tbody/tr[4]/td[2]/input')).sendKeys(ceb_acc); //acc number
+			$(byXpath('//*[@id="counterparty"]/form/div[1]/input')).click(); //search
+			$(byValue('Export')).click();
+			//$(byXpath('/html/body/div[3]/div[2]/form[2]/input')).click()//export-->goes to Downloads by default
+			///html/body/div[3]/div[3]/form[2]/input
+			sleep(10000);
+			//downloadFileOnAgent('https://eboxprdcsc.corebanking.intra.absa.co.za/csc/secure/eChannel/exportSearchPayment.do?',path+"payment.csv");
+	 		
+			//////////////////////////////////////////////////EBOX/////////////////////////////////////////////////////////////
+			 
+			//READ PAYMENT CSV
+			File payment_file = new File(payment_file_path);
+			//ArrayList to store details of branch, account and amount
+			ArrayList id_arr = new ArrayList();
+			ArrayList originator_branch_arr = new ArrayList();
+			ArrayList originator_account_arr = new ArrayList();
+			ArrayList originator_amount_arr = new ArrayList();
+			int credit_count; //number of creditors to reverse
+			if(payment_file.exists()){
+				Reader reader = Files.newBufferedReader(Paths.get(payment_file_path));
+				CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT);
+				reader.readLine();//read header
+				int count = 0;
+				LocalDate transDate;
+				for (CSVRecord csvRecord : csvParser) {
+
+					// Accessing Values by Column Index
+					String transDateStr = csvRecord.get(4); //PostDate
+					String id = csvRecord.get(74); //TrxId
+					String originator_branch = csvRecord.get(12); //OriginatorBranchId
+					String originator_account = csvRecord.get(14); //OriginatorAccountNumber
+					String originator_amount = csvRecord.get(16); //OriginatorTransactionAmount
+
+					//add details to arraylist-->if one record is blank or null it would cause problem
+					if(originator_branch.length() == 1){
+						originator_branch = "0"+originator_branch;
+					}
+					if(originator_branch.length() == 2){
+						originator_branch = "0"+originator_branch;
+					}
+					
+					//date filter--->from reversalTo to current day
+					transDate = LocalDate.parse(transDateStr,paymentFileDateFormat); 
+					if(transDate >= reversalTo && transDate <= karanLocal){
+	
+						originator_branch_arr.add(originator_branch);
+						originator_account_arr.add(originator_account);
+						id_arr.add(id);
+						
+						credit_count++;
+						//add TrxId and amount to map
+						if(id != null || id != ""){
+							if(originator_amount != null || originator_amount != ""){
+								Double id_double = Double.parseDouble(id);
+								Double amt_double = Double.parseDouble(originator_amount);
+								details_map_ebox.put(id_double,amt_double);
+								originator_amount_arr.add(amt_double);
+							}
+						}
+					
+					}
+					
+				}
+				csvParser.close();
+				reader.close();
+				//delete payment file 
+				payment_file.delete();
+			}
+			println(details_map_ebox);
+			
+			//COMPARE
+			if(details_map_mail.equals(details_map_ebox)){
+				//MATCHED
+				log.info("Transactions from eBox matched with error file(s)");
+				//assign debit amount-->sum of credit
+				for (Double d : details_map_mail.values()) {
+					debit_reversal += d;
+				}
+			}
+			println(debit_reversal);
+			println(originator_branch_arr)
+			println(originator_account_arr)
+			println(originator_amount_arr)
+			println(id_arr);
+			
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			if(debit_reversal > 0){ //reversal amount check
+	 		/////////////////////////////////////////////////MAKOLA/////////////////////////////////////////////////////////////
+			boolean login_capture_pass = true;
+			boolean login_verfiy_pass  = true;
+				
+			for (int c = 0; c < 2; c++){
+				//LOGIN
+				pageLoadTimeout(100000);
+				openChrome(makola_portal);
+				$(byXpath("//*[@id='username']")).sendKeys(username1);
+				$(byXpath("//*[@id='password']")).sendKeys(password1);
+				pageLoadTimeout(100000);
+				$(byXpath("//*[@id='kc-login']")).click();
+					
+				sleep(10000);
+					
+				try{
+					login_capture_pass = $(byXpath("//*[@id='payment-capture']")).is(EXIST);
+				}catch(Exception e){
+					login_capture_pass = false;
+				}
+				if(login_capture_pass){break;}
+					
+			}
+			
+			if(!login_capture_pass){
+				log.info("Payment Officer Login failed twice. Stopping transaction");
+				//loginta.append(karanLocal.toString());
+				//loginta.newLine();
+				//loginta.append("Payment Officer Login failed twice. Stopping transaction");
+				//loginta.newLine();
+			}
+			
+			
+			/////////////////////////////////LOGIN SUCCESS//////////////////////////////
+			if(login_capture_pass){
+			////////////////////////////////////////////////////////////////////////////
+			//PAYMENT CAPTURE
+			try{
+				pageLoadTimeout(10000);
+				$(byXpath("//*[@id='payment-capture']")).click();
+			}catch(Exception e){
+				log.info("10s Wait")
+				sleep(10000);
+				$(byXpath("//*[@id='payment-capture']")).click();
+			}
+			
+			n = 0;
+			
+			////			
+			for(int i = 0; i < originator_account_arr.size(); i++){
+			////	
+				log.info("Transaction id: " + id_arr[i]);
+				//loginta.append("Transaction id: " + id_arr[i]);
+				//loginta.newLine();
+				//loginta.newLine();
+				
+				////DEBIT
+				sleep(3000);
+				$(byXpath("//*[@id='undefined']")).sendKeys("037");							//branch(hc)
+				//$(byXpath("//*[@id='undefined']")).sendKeys(branch);						//branch
+				$(byXpath("//*[@id='accountNumber']")).sendKeys(acc_number);				//account number
+				sendKeys(Keys.TAB);
+				sleep(6000);
+				
+				//AVAILABLE BALANCE-->ADDED 240420-->appears only if account is valid 
+				//html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[1]/div/div/div[1]/span/h5[1]
+				String available_bal_str = $(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[1]/div/div/div[1]/span/h5[1]/b")).text();
+				log.info("Available Balance: "+available_bal_str);
+				//loginta.append("Available Balance: ");
+				//loginta.append(available_bal_str);		
+				//loginta.newLine();
+				
+				//Origination reference
+				$(byXpath("//*[@id='instructionOriginationReference']")).sendKeys(id_arr[i]);
+				//Destination reference
+				//$(byXpath("//*[@id='destinationReference']")).sendKeys("Suspense");
+				//workflow reference
+				$(byXpath("//*[@id='workflowReference']")).sendKeys(id_arr[i]);
+					
+				//purpose of payment
+				if($(byXpath("//*[@id='paymentPurpose_customselect']")).is(PRESENT)){	
+					$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[1]/div/div/sol-custom-select/div/div")).click();
+					$(byText("Bill Payment")).click();
+				}
+				log.info("Debit Entry Done");
+				//loginta.append("Debit entry has been successfully been entered into the system.");			
+				//loginta.newLine();
+				
+				int n = 0;
+				////CREDIT
+				$(byXpath("//*[@id='bankCode"+n+"']")).sendKeys("03"); 									//bank code
+				$(byXpath("//*[@id='branchId"+n+"']")).sendKeys(originator_branch_arr[i]);				//branch
+				$(byXpath("//*[@id='accountNumber"+n+"']")).sendKeys(originator_account_arr[i]);		//account number
+				sendKeys(Keys.TAB);
+				
+				
+				//origination ref 
+				try{
+				$(byXpath("//*[@id='originationReference"+n+"']")).sendKeys(id_arr[i]);
+				log.info("Filling Origination Reference");
+				}catch(Exception e){}
+				
+				//destination ref 
+				def dest_ref = $(byXpath("//*[@id='destinationReference"+n+"']"));
+				if(dest_ref.val() == ""){
+					dest_ref.sendKeys(id_arr[i]);
+				}
+				
+				//amount
+				try{
+				$(byXpath("//*[@id='amount"+n+"']")).sendKeys(String.format("%.2f",originator_amount_arr[i])); 
+				}catch(Exception e){log.info("Amount Error "+e)}
+				sleep(6000);
+				
+				n++;
+				
+				
+			
+				//}
+				log.info("Credit Entries Done");
+				//loginta.append("Credit entry has been successfully been entered into the system.");			
+				//loginta.newLine();
+				
+				//review
+				def review = $(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).is(ENABLED);
+				
+				if(review){
+					
+					//review button
+					$(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).click();	
+					//submit button
+					sleep(3000);
+					$(byXpath("/html/body/app-root/div/div/div/payment-review/sol-footer/div/div/span[3]/footer-primary/button")).waitUntil(VISIBLE);
+						
+					try{
+					pageLoadTimeout(10000);
+					$(byText("Submit for authorisation")).click();
+					log.info("Submitted for Authorisation");
+					}catch(Exception e){}
+					//loginta.append("Transaction Successfully Reviewed and Submitted. Waiting for Confirmation of Supervisor")
+					//loginta.newLine(); 
+					
+					verify_match_arr.add(id_arr[i]); //add id to be verified by checker
+					credit_holders_amt.put(id_arr[i],originator_amount_arr[i]) //add credit amount to be verified by checker
+				}
+				else{
+					
+					//loginta.append("Balance Matched but Cannot Review Transaction. Something Wrong");
+					//loginta.newLine();	
+					//review_error = true;
+					log.info("Balance Matched but Cannot Review Transaction. Something Wrong");
+					$(byText("Clear All")).click();
+					$(byText("Yes")).click();
+						
+				}
+				
+			////
+			}
+			////
+			println(verify_match_arr)
+			/////////////////////////////////LOGIN SUCCESS//////////////////////////////
+			}
+			////////////////////////////////////////////////////////////////////////////
+			 
+			int x = 1;
+			///////////////////////////////APPROVE PAYMENT////////////////////////////////
+			if(verify_match_arr.size() > 0){	//if there are payments to be verified
+			//////////////////////////////////////////////////////////////////////////////
+					
+			for (int d = 0; d < 2; d++){	//login twice
+				//LOGIN
+				pageLoadTimeout(100000);
+				openChrome(makola_portal);
+				try{
+					//logout
+					$(byXpath("/html/body/app-root/div/div/sol-header/div/sol-header-masthead/div[3]/div/div/ul/li/span")).click();
+					$(byText("Sign Out")).click();
+					sleep(3000);
+				}catch(Exception e){}
+				$(byXpath("//*[@id='username']")).sendKeys(username2);
+				$(byXpath("//*[@id='password']")).sendKeys(password2);
+				pageLoadTimeout(100000);
+				$(byXpath("//*[@id='kc-login']")).click();
+				
+				sleep(10000);
+				
+				try{
+					login_verify_pass = $(byText("Task List")).is(EXIST);
+				}catch(Exception e){
+					login_verify_pass = false;
+				}
+				if(login_verify_pass){break;}
+				
+			}
+			
+			if(!login_verify_pass){
+				log.info("Payment Supervisor Login failed twice. Stopping transaction");
+				//loginta.append(karanLocal.toString());//change
+				//loginta.newLine();
+				//loginta.append("Payment Supervisor Login failed twice. Stopping transaction");
+				//loginta.newLine();
+			}
+			
+			
+			//////////////////////////LOGIN VERIFY ERROR////////////////////////////////
+			if(login_verify_pass){
+			////////////////////////////////////////////////////////////////////////////
+			
+			//TASK LIST
+			try{
+				$(byText("Task List")).click();
+			}catch(Exception e){
+				log.info("10s Wait")
+				sleep(10000);
+				$(byText("Task List")).click();
+			}
+			
+			sleep(5000);
+			
+			int trans_count = 0;
+			int y = 1;
+			boolean trans_end = false;
+			def trans;
+			////
+			for(int verif_count = 0; verif_count < verify_match_arr.size(); verif_count++){
+			////
+			x = 1;
+			trans_count = 0;
+			y = 1;
+			trans_end = false;
+			//count how many transactions present 
+			while(!trans_end){	
+				try{
+					//count no of transactions
+					trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+x+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+					//println("TRANS--> "+trans)
+					trans_count++;
+				}catch(Exception e){
+					//log.info("Transaction End")
+					trans_end = true;
+				}
+				x++;	
+			}
+			//log.info("No of transactions in Task List "+trans_count); 
+			
+			boolean duplicate = false;
+			Double credit_holders_amt_cmp;
+		
+			
+			while(y <= trans_count){			//loop through all transactions
+				
+				trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+				
+				//arraylist verify_match_arr keeps track of transactions that have been captured, use this to match workflow ref
+				
+				
+				//open transaction to validate
+				if(trans.equals(verify_match_arr[verif_count])){	//if workflow ref is same as transactions id
+				
+					//VERIFY AND VALIDATE PAYMENT
+					if(!duplicate){							
+					$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+					
+					sleep(4000);
+					
+					String trans_id = $(byXpath("//*[@id='paymentId']")).text();
+					log.info(trans_id)
+					//loginta.append(trans_id);
+					//loginta.newLine();
+						
+					//VALIDATE PAYMENT
+					boolean cred_end = false;
+					int a = 0;
+					String cred;
+					int cred_verif_count = 0;
+					//count how many credit entries in verification--must be 1
+					while(!cred_end){
+						try{
+							cred = $(byXpath("//*[@id='"+a+"-amount']")).getText();
+							cred_verif_count++;
+						}catch(Exception e){
+							cred_end = true;
+						}
+						a++;
+					}
+					log.info("Number of credit entries: "+ cred_verif_count);
+					//loginta.append("Number of credit entries: "+ cred_verif_count);
+					//loginta.newLine();
+					
+					int match_count = 0;
+					if(cred_verif_count == credit_count_maks){
+						log.info("No of rows captured matches the no of rows to be verified");
+						//loginta.append("No of rows captured matches the no of rows to be verified");
+						//loginta.newLine();
+						//loop through amount list to see if it matches
+						for(int z=0; z < credit_count_maks; z++){
+							
+							cred = $(byXpath("//*[@id='"+z+"-amount']")).getText();
+							cred = cred.replace(",","");
+							Double cred_val = Double.parseDouble(cred);
+							
+							credit_holders_amt_cmp = credit_holders_amt.get(verify_match_arr[verif_count]);
+							
+													
+							if(cred_val == credit_holders_amt_cmp){
+
+								match_count++;
+							}
+						}
+					}
+					
+					//approved = false;
+					
+					//approve payment if all transactions matched
+					if(match_count == credit_count_maks){
+						//approve
+						log.info("All Rows Matched. Ready to Approve");
+						$(byText("Approve payment")).click();
+						//$(byText("Cancel")).click();	//for testing
+						
+						//loginta.append("Row Matched. Approved");
+						//loginta.newLine();
+						
+						//approved = true;
+					}
+					//else if all rows not matched- decline payment
+					else{
+						log.info("Row not matched. Declining payment");
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Credit entry to be verified not matching with captured credit entry");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						//loginta.append("Payment Declined. Credit entry to be verified not matching with captured credit entry");
+						//loginta.newLine();
+					}
+					
+					
+					//$(byText("Cancel")).click();	//for testing
+					sleep(3000);
+					
+					duplicate = true;
+					}
+					
+					//DECLINE PAYMENT(DUPLICATE)
+					else if(duplicate){
+						log.info("Duplicate Found");
+						$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+						sleep(5000);
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Duplicate Capture");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						//loginta.append("Duplicate Payment(s) Declined");
+						//loginta.newLine();
+					}
+					
+					
+					
+				}
+				
+				trans_count--;
+			}
+			////
+			}
+			////
+			//////////////////////////////LOGIN VERIFY ERROR///////////////////////////////		
+			}			
+			//////////////////////////////////////////////////////////////////////////////
+			//MOVE ERROR FILES TO DAILY FOLDER
+			//File open_folder = new File(open_folder_path);
+			//File[] filesList = open_folder.listFiles();
+			for(File file : filesList){
+				if(file.getName().contains("ABSA_ERR")){
+					File error_file_daily = new File(daily_path+file.getName())
+					Files.move(file.toPath(),error_file_daily.toPath());
+				}
+			}
+			////
+			}
+			///////////////////////////////APPROVE PAYMENT//////////////////////////////// 
+				 
+		
+			
+			/////////////////////////////////////////////////MAKOLA/////////////////////////////////////////////////////////////
+			}//reversal amount check
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			}
+			/////////////////////////////////////////////PROCESSED CHECK////////////////////////////////////////////////////////
+			
+			/////////////////////////////////////WRITE NOT PROCESSED TO DATE EXCEL//////////////////////////////////////////////
+			if(status_arr.contains("N")){
+				
+				
+				try{
+				//TO(DATE EXCEL)
+				outputFile1 = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dateExcel+".xlsx"); 
+				FileInputStream fisi1 = new FileInputStream(outputFile1);
+						
+				XSSFWorkbook outputWorkbook1 = new XSSFWorkbook(fisi1);
+				XSSFSheet outputSheet1 = outputWorkbook1.getSheet("bill_payment");	//change sheet name
+				
+				int outputRowCount1 = outputSheet1.getLastRowNum();//GET LAST OUTPUT EXCEL ROW
+				int currentRow = outputRowCount1 + 1;
+				
+				for(int i = 0; i < status_arr.size(); i++){
+					if(status_arr[i].equalsIgnoreCase("n")){
+						//date
+						outputSheet1.createRow(currentRow).createCell(0).setCellValue(status_date_arr[i]); //karanDate-->date running process
+						//comments
+						outputSheet1.getRow(currentRow).createCell(3).setCellValue("No Error Files Processed");
+					}
+					currentRow++;
+				}
+				
+				FileOutputStream fos1 = new FileOutputStream(outputFile1);
+				fisi1.close();
+				outputWorkbook1.write(fos1);
+				fos1.close();
+				
+				log.info("Successfully written to Date Excel");
+				
+		
+				}catch(Exception e){
+				
+					log.info("Failed to write to Date Excel"+e);
+					loginta.append("Failed to write to Date Excel");
+					loginta.newLine();
+				}
+		
+			}
+			/////////////////////////////////////WRITE NOT PROCESSED TO DATE EXCEL//////////////////////////////////////////////
+			
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+		
+<export include-original-data="true">
+	 <single-column name="reversal_amt" value="${debit_reversal}"/>
+</export>
+
+</config>
