@@ -1,0 +1,962 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+<var-def name="links">
+	<datastore name="ceb_billing">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
+
+<var-def name="ph">
+		<datastore name="public_holidays">
+			SELECT * from @this
+		</datastore>
+</var-def>
+
+<secrets-vault-get alias="makola_capture_officer" />
+<secrets-vault-get alias="makola_supervisor_officer" />
+<secrets-vault-get alias="ebox_portal" />
+		
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+		<script><![CDATA[
+		
+		//take reversal done by bot on pwd as bot_reversal -> 1
+		//take reversal done automatically and reversal done by bot today as reversal_amount as well as payment amt pwd -> 2
+		//bill payment will appear on debit side-->not to confuse with reversal-->
+		//total reversal amount will be  2 - 1 - debit amount(pwd)
+		
+		//read reversal from report excel-- problem if changing month--take pwd 30/07/20 
+		//read reversal from report excel-- problem if no ceb error file has been received--amount will 0 18/03/20
+		
+		//read reversal from report excel-- if no records done for before previous day and previous day no transactions recorded, then it will take wrong amount to be subtracted-->pwd check
+		//read reversal from report excel-- if processed manually, it wont be logged in excel-->read from mail?
+		//read reversal from report excel-- take reversal and debit for pwd only??
+		
+		//date
+		import java.time.LocalDate;
+		import java.time.LocalDateTime;
+		import java.time.ZoneId;
+		import java.time.format.DateTimeFormatter
+		import java.util.*;
+		import java.text.SimpleDateFormat;
+		//files	
+		import org.apache.commons.io.FileUtils;
+		import java.io.File;
+		import java.io.FileInputStream;
+		import java.io.FileOutputStream;
+		import java.nio.file.FileSystem;
+		import java.nio.file.FileSystems;
+		import java.nio.file.Files;
+		import java.nio.file.Path;
+		import java.nio.file.StandardCopyOption;
+		//apache excel
+		import org.apache.poi.xssf.usermodel.*;
+		import org.apache.poi.ss.usermodel.*;
+		import org.apache.poi.hssf.usermodel.*;
+		import java.text.SimpleDateFormat;
+		import org.apache.poi.ss.usermodel.DateUtil
+		//screenshot
+		import org.openqa.selenium.OutputType;
+        import org.openqa.selenium.TakesScreenshot;
+		import org.apache.commons.io.FileUtils;
+        import java.io.File;
+
+		
+		//change as needed
+		int credit_count_maks = 1;					//no of creditors
+		String acc_holder_name_debit = "Suspense"	//debit account holder name
+		
+		String currBal_str;
+		double reversal_amt = 0;
+		double currBal;
+		double debit_amt;
+		double final_debit_amt;
+		double final_reversal;
+		double pwdBotReversal;
+		double pwdDebitAmount;
+		int credit_count = 0;
+		int credit_sum = 0;
+		int reversal_count = 0;
+		
+		boolean review_error = false;
+		List credit_holders_amt = new ArrayList();
+		boolean approved = false;
+		
+		//PREV LEVEL
+		String bot_reversal_str = bot_reversal_amt;
+		double bot_reversal = Double.parseDouble(bot_reversal_str);
+		
+		//MAIL 
+		Boolean error_mail = false;
+		Boolean success_mail = false;
+		String subject = "";
+		String body = "";
+		String mail_to = "Olivier.Rayapen@absa.africa,Ileyen.Kistnasamy@absa.africa,Rajesh.Parameswaran@absa.africa,RBMURobotSFI@absa.africa";
+				
+		//date
+		//LocalDate karanLocal    = LocalDate.parse("2020-07-31"); 							//test for current date
+		LocalDate karanLocal    = LocalDate.now()											//live
+		LocalDateTime kLDT 		= LocalDateTime.now(ZoneId.of("GMT+04:00"));				//zone timed live					
+		LocalDate oneDayBefore  = karanLocal.minusDays(1); 									//one day before
+		LocalDate pwd		    = karanLocal.minusDays(1);									//previous working day is one day before by default
+		LocalDate reversalTo    = pwd.plusDays(1);											//from which date to take reversals
+		LocalDate creditDate	= oneDayBefore;												//take eod from pwd by default
+		
+		
+		DateTimeFormatter transDateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+		DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
+		DateTimeFormatter karanDatelostos = DateTimeFormatter.ofPattern("ddMMyyyy");
+		DateTimeFormatter dateExcelFormat = DateTimeFormatter.ofPattern("MMMM "+"yyyy");
+		DateTimeFormatter yearlyFolderFormat = DateTimeFormatter.ofPattern("YYYY");
+		DateTimeFormatter monthlyFolderFormat = DateTimeFormatter.ofPattern("MM MMMM");
+		DateTimeFormatter dailyFolderDateFormat = DateTimeFormatter.ofPattern("dd.MM.yy");
+		String yearlyFolderStr = karanLocal.format(yearlyFolderFormat);
+		String monthlyFolderStr = karanLocal.format(monthlyFolderFormat);
+		String dailyFolderStr = karanLocal.format(dailyFolderDateFormat);
+ 		String karanDate2 = karanLocal.format(karanDatelostos);
+		String karanDate  = karanLocal.format(transDateFormat);						//live
+ 		String tayme = karanLocal.toString() + " " + kLDT.getHour().toString()+ ":" + kLDT.getMinute().toString()
+		String dateExcel  = karanLocal.format(dateExcelFormat);
+
+			
+		//LIST OF PUB_HO
+		List dateList = new ArrayList();
+		for(int i = 0; i < ph.size(); i++){
+			date = ph.get(i).getAt("Date").toString();	
+			dateList.add(date);
+		}
+		
+		
+		
+		//PREVIOUS WORKING DAY
+		boolean validPwd = false;
+		while(!validPwd){
+			
+			String pwdCheck = pwd.format(csvDateFormat);
+				 
+			//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+			if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+				pwd = pwd.minusDays(1);
+
+			}
+			//THE WEEKND
+			else if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+				//SUNDAY
+				if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+					pwd = pwd.minusDays(1);
+				}
+				
+				//SATURDAY
+				if(pwd.getDayOfWeek().toString() == "SATURDAY"){
+					pwd = pwd.minusDays(1);
+				}
+			}
+			//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+			else{
+				validPwd = true;
+			}
+			
+			
+		}
+		
+		log.info("Current Day: "+karanLocal);
+		//PWD CHANGES 
+		reversalTo  = pwd.plusDays(1);
+		log.info("Previous Working Day: "+pwd);
+		
+		
+		//SECRETS VAULT
+		Map entryMap = secureEntryMap.getWrappedObject();
+        com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("makola_capture_officer");
+        com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj2 = entryMap.get("makola_supervisor_officer");
+        com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj3 = entryMap.get("ebox_portal");
+        username1 = obj.getKey().toString();
+       	password1 = obj.getValue().toString();
+        username2 = obj2.getKey().toString();
+        password2 = obj2.getValue().toString();
+        username3 = obj3.getKey().toString();
+       	password3 = obj3.getValue().toString();
+		
+		////DATASTORE
+		//DIRECTORY
+		String Dir = links.get(0).getAt("path").toString();
+		//EBOX PORTAL
+		String ebox_portal = links.get(0).getAt("ebox_portal_link").toString();
+		//MAKOLA PORTAL
+		String makola_portal = links.get(0).getAt("makola_portal").toString();
+		//BRANCH NUMBER DEBIT
+		String branch = links.get(0).getAt("debit_branch").toString()
+		//ACCOUNT NUMBER
+		String acc_number = links.get(0).getAt("debit_account").toString();
+		//COMMISSION AMOUNT
+		String commission = links.get(0).getAt("commission_amt").toString();
+		//BRANCH NUMBER CREDIT
+		String cred_branch = links.get(0).getAt("ceb_branch").toString();
+		//CEB ACCOUNT
+		String ceb_acc = links.get(0).getAt("ceb_acc").toString();
+		
+		////////////////////CREATE FOLDER//////////////////////
+		//YEARLY FOLDER
+		File yearlyFolder = new File(Dir+yearlyFolderStr);
+        if(!yearlyFolder.exists()){
+           yearlyFolder.mkdir();
+        }
+		
+		//MONTHLY FOLDER
+		File monthlyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr);
+        if(!monthlyFolder.exists()){
+            monthlyFolder.mkdir();
+        }
+			
+		//DAILY FOLDER
+		File dailyFolder = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr);
+        if(!dailyFolder.exists()){
+            dailyFolder.mkdir();   
+        }
+		////////////////////CREATE FOLDER//////////////////////
+		
+		//path
+		String daily_path =  Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr+"//";
+		String config_path = Dir+"config\\";
+		String open_folder_path = config_path + "Open\\";
+		String log_path = daily_path+"log.txt";
+	
+		//LOG FILE
+		FileWriter fr = new FileWriter(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dailyFolderStr+"//log.txt", true);
+		BufferedWriter loginta = new BufferedWriter(fr);
+		
+		loginta.append("----------------------------------------------------");
+		loginta.newLine();
+		loginta.append(tayme);
+		loginta.newLine();
+		loginta.append("Previous Working Day is: ");
+		loginta.append(pwd.toString());
+		loginta.newLine();
+		loginta.newLine();
+		
+		loginta.append("BILL PAYMENT");
+		loginta.newLine();
+		loginta.append("Ebox");
+		loginta.newLine();
+		
+		
+		/////////////////////////////////////////////////////////////////////////////////////////////
+		try{
+		///////////////////////////////READ EXCEL TO CALCULATE REVERSAL/////////////////////////////
+		//get pwd month
+		String dateExcelPwd  = pwd.format(dateExcelFormat);
+ 		
+		File reportExcel = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dateExcelPwd+".xlsx"); 
+		FileInputStream fisi = new FileInputStream(reportExcel);
+		XSSFWorkbook inputWorkbook = new XSSFWorkbook(fisi);
+		XSSFSheet inputSheet = inputWorkbook.getSheetAt(0);
+		
+		//get last row- might as well not get last row but last writable row
+		int rowCount = inputSheet.getLastRowNum();
+		
+		Row lastCurrentRow = inputSheet.getRow(rowCount);
+		pwdReportDateStr  = lastCurrentRow.getCell(0).getStringCellValue();
+		LocalDate pwdReportDate =  LocalDate.parse(pwdReportDateStr,transDateFormat);
+		//check to not take bot reversal and debit amount if last transaction dates from before pwd
+		if(pwdReportDate >= pwd){
+			pwdBotReversal = lastCurrentRow.getCell(2).getNumericCellValue();
+			pwdDebitAmount = lastCurrentRow.getCell(1).getNumericCellValue();	
+		}
+		println(pwdBotReversal)
+		println(pwdDebitAmount)
+		///////////////////////////////READ EXCEL TO CALCULATE REVERSAL/////////////////////////////
+		
+		///////////////////////////////////////////EBOX/////////////////////////////////////////////
+		
+		//LOGIN EBOX
+		openChrome(ebox_portal);
+		pageLoadTimeout(100000);
+		$(byXpath("//input[@name='username']")).sendKeys(username3);
+		$(byXpath("//input[@name='j_password']")).sendKeys(password3);
+		//$(byText("corp.dsarena.com")).click();//domain only present in uat
+		pageLoadTimeout(30000);
+		$(byXpath("/html/body/div[2]/form/div[2]/input")).click();//login
+		
+		
+		//STATEMENT VIEW
+		boolean ebox_load = false;
+		try{
+		ebox_load = $(byText("Statement View")).is(VISIBLE);
+		}catch(Exception e){
+			refresh();
+			pageLoadTimeout(100000);
+			$(byText("Statement View")).click();
+		}
+		
+		if(ebox_load){
+			$(byText("Statement View")).click();
+		}
+		//BRANCH NUMBER
+		$(byXpath("//input[@name='cbBranchNumber']")).sendKeys("037");
+		//$(byXpath("//input[@name='cbBranchNumber']")).sendKeys(branch);
+		//ACCOUNT NUMBER
+		$(byXpath("//input[@name='cbAccountNumber']")).sendKeys("3000361"); //test acc 9700020
+		//$(byXpath("//input[@name='cbAccountNumber']")).sendKeys(acc_number);
+		//SEARCH
+		pageLoadTimeout(10000);
+		$(byName("cbChangeCustomer")).click();
+		//CHOOSE CURRENT STATEMENT
+		$(byXpath("//*[@id='StatementForm']/table/tbody[2]/tr/td[2]/select/option[1]")).click();//--->CURRENT 
+		//$(byXpath("//*[@id='StatementForm']/table/tbody[2]/tr/td[2]/select/option[3]")).click();  //--->DATED
+		
+		
+		
+		//COUNT NUMBER OF ROWS
+		boolean rowExists = true;
+		int i = 2;
+		int running_bal_row_count;
+		int row_count = 0;
+		while(rowExists){
+			
+			try{
+				rowExists = $(byXpath("//*[@id='StatementForm']/div[4]/div/table/tbody/tr["+i+"]/td[1]")).is(EXIST);	//check by date column
+			}
+			catch(Exception e){
+				rowExists = false;
+			}
+			if(rowExists){
+				row_count++;
+				i++;
+			}
+			
+			
+		}//END OF ROWS
+		int row = i - 1;
+		boolean creditPass = true;
+		println("Number of Transactions: "+row_count);
+		println("Last Row Item Number: "+ row);
+		
+		LocalDate dateCheck;
+		///////////////////////////////////////////////////////////////////ROW LOOP/////////////////////////////////////////////////////////
+		while(row >= 2){
+			
+			String dateCheckStr = $(byXpath("//*[@id='StatementForm']/div[4]/div/table/tbody/tr["+row+"]/td[1]")).text();
+			dateCheck = LocalDate.parse(dateCheckStr,transDateFormat);
+			
+			//REVERSALS-->remove because already calculating in previous task
+			if(dateCheck >= pwd && dateCheck < karanLocal){ 
+				//calculate reversal amount
+				//debit check
+				String reverse = $(byXpath("//*[@id='StatementForm']/div[4]/div/table/tbody/tr["+row+"]/td[5]")).text();
+				if(!reverse.isEmpty()){
+					if(reverse.contains(",")){
+						reverse = reverse.replace(",","");
+					}
+					reversal_amt += Double.parseDouble(reverse);
+					reversal_count++;
+				}
+				
+			} 
+			
+			//LAST EOD
+			if(creditPass){
+				if(dateCheck <= creditDate){
+					//get EOD amount
+					running_bal_row_count = row;
+					creditPass = false;				
+					//break;	//possible problem --if eod found before getting all reversal it will get out of the loop
+				}
+			}
+			
+			//CREDIT 
+			if(dateCheck <= creditDate && dateCheck >= pwd){
+				//calculate credit amount
+				//credit check
+				String credit = $(byXpath("//*[@id='StatementForm']/div[4]/div/table/tbody/tr["+row+"]/td[6]")).text();
+				if(!credit.isEmpty()){
+					if(credit.contains(",")){
+						credit = credit.replace(",","");
+					}
+					credit_sum += Double.parseDouble(credit);
+					credit_count++;
+				}
+			}
+			
+			
+			row--;
+		}
+		//////////////////////////////////////////////////////////////END OF ROW LOOP/////////////////////////////////////////////////////////
+		log.info("Number of Credit Transactions: "+credit_count);
+		log.info("Credit Sum: "+credit_sum);
+		
+	
+		//RUNNING BALANCE
+		String running_bal_str = $(byXpath("//*[@id='StatementForm']/div[4]/div/table/tbody/tr["+running_bal_row_count+"]/td[7]")).text();
+		log.info("EOD Balance: "+running_bal_str);
+		if(running_bal_str.contains(",")){
+			running_bal_str = running_bal_str.replace(",","");
+		}
+		double running_bal = Double.parseDouble(running_bal_str);
+		
+		final_reversal = bot_reversal + reversal_amt - (pwdBotReversal+pwdDebitAmount); 
+		
+		//debit_amt = credit_sum - reversal_amt;
+		debit_amt = credit_sum - final_reversal;
+		
+		log.info("Reversal Amount: "+final_reversal);
+		log.info("Debit/Credit Amount: "+debit_amt);
+		
+		
+		Double credit_amt = debit_amt;
+		
+		//add to list to verify on makola supervisor
+		credit_holders_amt.add(credit_amt);
+		
+		loginta.append("Account Number- "+ acc_number);
+		loginta.newLine();
+		loginta.append("EOD Balance- "+ running_bal);
+		loginta.newLine();
+		loginta.append("Credit Sum: "+ credit_sum);
+		loginta.newLine();
+		loginta.append("Number of Credit Transactions: "+credit_count);
+		loginta.newLine();
+		loginta.append("Reversal Amount: "+ final_reversal);
+		loginta.newLine();
+
+		loginta.append("Debit/Credit Amount: "+ String.format("%.2f",debit_amt));
+		loginta.newLine();
+		loginta.newLine();
+	
+		///////////////////////////////////////////EBOX/////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////////////
+		if(credit_count >= 1){	//no transactions check
+		//////////////////////////////////////////MAKOLA////////////////////////////////////////////
+		//////////////////////////////LOGIN TWICE///////////////////////////////
+		loginta.append("Makola");
+		loginta.newLine();
+		
+		boolean login_capture_pass = true;
+		boolean login_verfiy_pass  = true;
+			
+		for (int c = 0; c < 2; c++){
+			//LOGIN
+			pageLoadTimeout(100000);
+			openChrome(makola_portal);
+			$(byXpath("//*[@id='username']")).sendKeys(username1);
+			$(byXpath("//*[@id='password']")).sendKeys(password1);
+			pageLoadTimeout(100000);
+			$(byXpath("//*[@id='kc-login']")).click();
+				
+			sleep(10000);
+				
+			try{
+				login_capture_pass = $(byXpath("//*[@id='payment-capture']")).is(EXIST);
+			}catch(Exception e){
+				login_capture_pass = false;
+			}
+			if(login_capture_pass){break;}
+				
+		}
+		
+		if(!login_capture_pass){
+			log.info("Payment Officer Login failed twice. Stopping transaction");
+			loginta.append(karanLocal.toString());
+			loginta.newLine();
+			loginta.append("Payment Officer Login failed twice. Stopping transaction");
+			loginta.newLine();
+		}
+		
+		
+		/////////////////////////////////LOGIN SUCCESS//////////////////////////////
+		if(login_capture_pass){
+		///////////////////////////////////////////////////////////////////////////
+		//PAYMENT CAPTURE
+		try{
+			pageLoadTimeout(10000);
+			$(byXpath("//*[@id='payment-capture']")).click();
+		}catch(Exception e){
+			log.info("10s Wait")
+			sleep(10000);
+			$(byXpath("//*[@id='payment-capture']")).click();
+		}
+		
+		n = 0;
+		
+		////DEBIT
+		sleep(5000);
+		$(byXpath("//*[@id='undefined']")).sendKeys("037");							//branch(hc)
+		//$(byXpath("//*[@id='undefined']")).sendKeys(branch);						//branch
+		$(byXpath("//*[@id='accountNumber']")).sendKeys(acc_number);				//account number
+		sendKeys(Keys.TAB);
+		sleep(3000);
+		
+		//AVAILABLE BALANCE-->ADDED 240420-->appears only if account is valid 
+		//html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[1]/div/div/div[1]/span/h5[1]
+		String available_bal_str = $(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[1]/div/div/div[1]/span/h5[1]/b")).text();
+		log.info("Available Balance: "+available_bal_str);
+		loginta.append("Available Balance: ");
+		loginta.append(available_bal_str);		
+		loginta.newLine();
+		
+		//purpose of payment
+		if($(byXpath("//*[@id='paymentPurpose_customselect']")).is(PRESENT)){	
+			$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[1]/div/div/sol-custom-select/div/div")).click();
+			$(byText("Bill Payment")).click();
+		}
+		
+		//posting option = Consolidated
+		$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[2]/div/div[1]/div/div/div/sol-radio[2]/label/span[2]")).click();
+		
+		//Force Post->removed 240420	
+		//$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[2]/div/div[2]/div/div[2]/sol-checkbox/label")).click();
+		
+		//Origination reference
+		$(byXpath("//*[@id='instructionOriginationReference']")).sendKeys("Transfer to CEB account");
+		//Destination reference
+		//$(byXpath("//*[@id='destinationReference']")).sendKeys("Suspense");
+		//workflow reference
+		$(byXpath("//*[@id='workflowReference']")).sendKeys(acc_holder_name_debit);
+		
+		
+		
+		log.info("Debit Entry Done");
+		loginta.append("Debit entry has been successfully been entered into the system.");			
+		loginta.newLine();
+		
+		sleep(5000);
+		
+		////CREDIT
+		//CEB
+		$(byXpath("//*[@id='bankCode0']")).text("03"); 					//bank code
+		$(byXpath("//*[@id='branchId0']")).sendKeys("014");				//branch(hc)
+		//$(byXpath("//*[@id='branchId0']")).sendKeys(cred_branch);		//branch
+		$(byXpath("//*[@id='accountNumber0']")).sendKeys(ceb_acc);		//account number
+		//origination ref 
+		String payment = "Payments "+ karanDate2;
+		try{
+			$(byXpath("//*[@id='originationReference0']")).sendKeys(payment);
+			log.info("Filling Origination Reference");
+		}catch(Exception e){}	
+		
+		//destination ref 
+		def dest_ref = $(byXpath("//*[@id='destinationReference0']"));
+		if(dest_ref.val() == ""){
+			dest_ref.sendKeys(payment);
+		}
+		
+		//test
+		//Double credit_amt = 100.00;
+		
+		//amount
+		try{
+			$(byXpath("//*[@id='amount0']")).sendKeys(String.format("%.2f",credit_amt));
+		}catch(Exception e){log.info("Error inputing amount "+e)}
+	
+		
+		//test
+		//currBal = 111;
+		
+		
+		
+		
+		log.info("Credit Entry Done");
+		loginta.append("Credit entry has been successfully been entered into the system.");			
+		loginta.newLine();	
+		sleep(7000);
+		
+		/////////////////////////////////VERIFY MATCH///////////////////////////////
+		def gross_cred_amount = $(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[2]/div/div[3]/h4[3]/span")).getText();
+		String[] list_cred_amount = gross_cred_amount.split(" ");
+		String cred_amount = list_cred_amount[1];
+
+		//review
+		def review = $(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).is(ENABLED);
+		
+		Double cred_amount_final = Double.parseDouble(cred_amount.replace(",",""));
+
+	
+		if(review){
+			//review button
+			$(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).click();	
+			//submit button
+			sleep(3000);
+			$(byXpath("/html/body/app-root/div/div/div/payment-review/sol-footer/div/div/span[3]/footer-primary/button")).waitUntil(VISIBLE);
+				
+			try{
+			//$(byXpath("/html/body/app-root/div/div/div/payment-review/sol-footer/div/div/span[3]/footer-primary/button")).click();
+			$(byText("Submit for authorisation")).click();
+			log.info("Submitted for Authorisation");
+			}catch(Exception e){}
+			loginta.append("Transaction Successfully Reviewed and Submitted. Waiting for Confirmation of Supervisor")
+			loginta.newLine();
+				
+		}
+		else{
+				
+			loginta.append("Balance Matched but Cannot Review Transaction. Something Wrong");
+			loginta.newLine();	
+			review_error = true;
+			log.info("Balance Matched but Cannot Review Transaction. Something Wrong");
+				
+		}
+				
+		/////////////////////////////////VERIFY MATCH///////////////////////////////
+		//take screenshot if error
+		if(review_error){
+			try{
+				File screenshotFile = new File(Dir+"makola_capture_err.png");
+				screenshotFile.createNewFile();
+				byte[] screenShot = driver().getScreenshotAs(OutputType.BYTES)   
+				FileUtils.writeByteArrayToFile(screenshotFile, screenShot);
+			}catch(Exception ex){log.info("Screenshot not taken");}
+		}	
+		sleep(7000);
+	
+
+		int x = 1;
+		
+		///////////////////////////////APPROVE PAYMENT////////////////////////////////
+		if(!review_error){	//check if payment file submitted
+		//////////////////////////////////////////////////////////////////////////////
+				
+			for (int d = 0; d < 2; d++){	//login twice
+				//LOGIN
+				pageLoadTimeout(100000);
+				openChrome(makola_portal);
+				try{
+					//logout
+					$(byXpath("/html/body/app-root/div/div/sol-header/div/sol-header-masthead/div[3]/div/div/ul/li/span")).click();
+					$(byText("Sign Out")).click();
+					sleep(3000);
+				}catch(Exception e){}
+				$(byXpath("//*[@id='username']")).sendKeys(username2);
+				$(byXpath("//*[@id='password']")).sendKeys(password2);
+				pageLoadTimeout(100000);
+				$(byXpath("//*[@id='kc-login']")).click();
+				
+				sleep(10000);
+				
+				try{
+					login_verify_pass = $(byText("Task List")).is(EXIST);
+				}catch(Exception e){
+					login_verify_pass = false;
+				}
+				if(login_verify_pass){break;}
+				
+			}
+			
+			if(!login_verify_pass){
+				log.info("Payment Supervisor Login failed twice. Stopping transaction");
+				loginta.append(karanLocal.toString());
+				loginta.newLine();
+				loginta.append("Payment Supervisor Login failed twice. Stopping transaction");
+				loginta.newLine();
+			}
+			
+			
+			//////////////////////////LOGIN VERIFY ERROR////////////////////////////////
+			if(login_verify_pass){
+			////////////////////////////////////////////////////////////////////////////
+			
+			//TASK LIST
+			try{
+				$(byText("Task List")).click();
+			}catch(Exception e){
+				log.info("10s Wait")
+				sleep(10000);
+				$(byText("Task List")).click();
+			}
+			
+			sleep(5000);
+			
+			int trans_count = 0;
+			int y = 1;
+			boolean trans_end = false;
+			def trans;
+			//count how many transactions present 
+			while(!trans_end){	
+				try{
+					//count no of transactions
+					trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+x+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+					//println("TRANS--> "+trans)
+					trans_count++;
+				}catch(Exception e){
+					//log.info("Transaction End")
+					trans_end = true;
+				}
+				x++;	
+			}
+			//log.info("No of transactions in Task List "+trans_count); 
+			
+			boolean duplicate = false;
+			Double credit_holders_amt_cmp;
+			
+			while(y <= trans_count){			//loop through all transactions
+			
+				trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+	
+				//open transaction to validate
+				if(trans.equals(acc_holder_name_debit)){	//if workflow ref is same as debit holder
+					//VERIFY AND VALIDATE PAYMENT
+					if(!duplicate){							
+					$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+					
+					sleep(4000);
+					
+					String trans_id = $(byXpath("//*[@id='paymentId']")).text();
+					log.info(trans_id)
+					loginta.append(trans_id);
+					loginta.newLine();
+						
+					//VALIDATE PAYMENT
+					boolean cred_end = false;
+					int a = 0;
+					String cred;
+					int cred_verif_count = 0;
+					//count how many credit entries in verification--must be 1
+					while(!cred_end){
+						try{
+							cred = $(byXpath("//*[@id='"+a+"-amount']")).getText();
+							cred_verif_count++;
+						}catch(Exception e){
+							cred_end = true;
+						}
+						a++;
+					}
+					log.info("Number of credit entries: "+ cred_verif_count);
+					//loginta.append("Number of credit entries: "+ cred_verif_count);
+					//loginta.newLine();
+					
+					int match_count = 0;
+					if(cred_verif_count == credit_count_maks){
+						log.info("No of rows captured matches the no of rows to be verified");
+						loginta.append("No of rows captured matches the no of rows to be verified");
+						loginta.newLine();
+						//loop through amount list to see if it matches
+						for(int z=0; z < credit_count_maks; z++){
+							
+							cred = $(byXpath("//*[@id='"+z+"-amount']")).getText();
+							cred = cred.replace(",","");
+							Double cred_val = Double.parseDouble(cred);
+							
+							credit_holders_amt_cmp = credit_holders_amt[z];
+							
+													
+							if(cred_val == credit_holders_amt_cmp){
+
+								match_count++;
+							}
+						}
+					}
+					
+					approved = false;
+					
+					//approve payment if all transactions matched
+					if(match_count == credit_count_maks){
+						//approve
+						log.info("All Rows Matched. Ready to Approve");
+						$(byText("Approve payment")).click();
+						//$(byText("Cancel")).click();	//for testing
+						
+						loginta.append("Row Matched. Approved");
+						loginta.newLine();
+						
+						approved = true;
+					}
+					//else if all rows not matched- decline payment
+					else{
+						log.info("Row not matched. Declining payment");
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Credit entry to be verified not matching with captured credit entry");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						loginta.append("Payment Declined. Credit entry to be verified not matching with captured credit entry");
+						loginta.newLine();
+					}
+					
+					
+					//$(byText("Cancel")).click();	//for testing
+					sleep(3000);
+					
+					duplicate = true;
+					}
+					
+					//DECLINE PAYMENT(DUPLICATE)
+					else if(duplicate){
+						log.info("Duplicate Found");
+						$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+						sleep(5000);
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Duplicate Capture");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						loginta.append("Duplicate Payment(s) Declined");
+						loginta.newLine();
+					}
+					
+					
+					
+				}
+				
+			trans_count--;
+			}
+			
+			//MOVE ERROR FILES TO DAILY FOLDER
+			File open_folder = new File(open_folder_path);
+			File[] filesList = open_folder.listFiles();
+			for(File file : filesList){
+				if(file.getName().contains("ABSA_ERR")){
+					File error_file_daily = new File(daily_path+file.getName())
+					Files.move(file.toPath(),error_file_daily.toPath());
+				}
+			}
+			////
+			//////////////////////////////LOGIN VERIFY ERROR///////////////////////////////		
+			}			
+		//////////////////////////////////////////////////////////////////////////////		
+		}
+		///////////////////////////////APPROVE PAYMENT//////////////////////////////// 
+				
+			
+			
+		//////////////////////////////WRITE TO DATE EXCEL/////////////////////////////
+		if(approved){
+			
+			try{
+			//TO(DATE EXCEL)
+			outputFile1 = new File(Dir+yearlyFolderStr+"//"+monthlyFolderStr+"//"+dateExcel+".xlsx"); 
+			FileInputStream fisi1 = new FileInputStream(outputFile1);
+					
+			XSSFWorkbook outputWorkbook1 = new XSSFWorkbook(fisi1);
+			XSSFSheet outputSheet1 = outputWorkbook1.getSheet("bill_payment");	//change sheet name
+			
+			int outputRowCount1 = outputSheet1.getLastRowNum();//GET LAST OUTPUT EXCEL ROW
+		
+			
+			//date
+			outputSheet1.createRow(outputRowCount1+1).createCell(0).setCellValue(karanDate);
+			//debit/credit amount
+			outputSheet1.getRow(outputRowCount1+1).createCell(1).setCellValue(debit_amt);
+			//reversal made by bot
+			outputSheet1.getRow(outputRowCount1+1).createCell(2).setCellValue(bot_reversal);
+			//total reversal
+			outputSheet1.getRow(outputRowCount1+1).createCell(3).setCellValue(final_reversal);
+			
+			
+			FileOutputStream fos1 = new FileOutputStream(outputFile1);
+			fisi1.close();
+			outputWorkbook1.write(fos1);
+			fos1.close();
+			
+			log.info("Successfully written to Date Excel");
+			//send mail to inform of successful run
+			success_mail = true;
+			subject = "CEB Bill Payment Successful"
+			body = "Please find attached log in mail."
+			
+			
+			}catch(Exception e){
+			
+				log.info("Failed to write to Date Excel"+e);
+				loginta.append("Failed to write to Date Excel");
+				loginta.newLine();
+			}
+		
+		}
+		//////////////////////////////WRITE TO DATE EXCEL/////////////////////////////
+		
+		
+		
+		///////////////////////////END LOGIN CAPTURE ERROR/////////////////////////////
+		}//makola capture login pass
+		}//no transactions check 
+		else if(credit_count == 0){
+			log.info("No Transactions for current date");
+			loginta.append("No Transactions for current date");
+			loginta.newLine();
+		}			
+		//////////////////////////////////////////MAKOLA////////////////////////////////////////////
+		}catch(Exception e){
+			log.info("Error- Bot Execution Failed"+e);
+			loginta.append("Error- Bot Execution Failed");
+			loginta.newLine();
+			error_mail = true;
+			subject = "Failure- Bot Execution"
+			body = "The bot has failed while making payment. Please re-run."
+			
+			
+			try{
+				byte[] screenShot = driver().getScreenshotAs(OutputType.BYTES) 
+				File screenshotFile = new File(Dir+"err.png");
+				screenshotFile.createNewFile();	  
+				FileUtils.writeByteArrayToFile(screenshotFile, screenShot);
+			}catch(Exception ex){log.info("Screenshot not taken");}
+		}
+		
+		//mail
+		sys.defineVariable("error_mail", error_mail);
+		sys.defineVariable("success_mail", success_mail);
+		sys.defineVariable("subject", subject);
+		sys.defineVariable("body", body);
+		sys.defineVariable("mail_to", mail_to);
+		sys.defineVariable("log_path", log_path);
+		
+		loginta.append("----------------------------------------------------");
+		loginta.newLine();
+		loginta.newLine();
+		loginta.close(); 
+	
+		
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+
+<case>
+	<if condition="${error_mail}">
+		<mail smtp-host="mail.absa.co.za"
+			 smtp-port="25"
+			 type="html"
+			 from="EformRobot@absa.africa"
+			 to="${mail_to}" 
+			 subject="${subject}">
+			 
+			 <var name="body"/>
+			 
+			 <mail-attach name="log.txt">
+			 <file path="${log_path}" type="binary"/>
+			 </mail-attach>
+			 
+		</mail>
+	</if>
+</case>
+<case>
+	<if condition="${success_mail}">
+		<mail smtp-host="mail.absa.co.za"
+			 smtp-port="25"
+			 type="html"
+			 from="EformRobot@absa.africa"
+			 to="${mail_to}" 
+			 subject="${subject}">
+			 
+			 <var name="body"/>
+			 
+			 <mail-attach name="log.txt">
+			 <file path="${log_path}" type="binary"/>
+			 </mail-attach>
+			 
+		</mail>
+	</if>
+</case>
+		
+<export include-original-data="true"></export>
+
+</config>
+		
