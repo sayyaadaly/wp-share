@@ -30,12 +30,12 @@ Dim currentRow
 
 'SavePath = wscript.Arguments(0-1-2-3)
 'call script in wf-->Runtime.getRunTime().exec("wscript " + \\vbs_path\\ + " " + argument1 + " " + argument2 );
-SavePath = "C:\Users\Muthe Udaya Sankar\Desktop\CEB Bill Payment\" 'Change path
+SavePath = "C:\Users\rb-eform01\Desktop\CEB Bill Payment\" 'path
 
 'excel paths
-payment_path = "C:\Users\Muthe Udaya Sankar\Desktop\CEB Bill Payment\payment.xlsx"
-error_path = "C:\Users\Muthe Udaya Sankar\Desktop\CEB Bill Payment\processed.xlsx"
-no_error_path = "C:\Users\Muthe Udaya Sankar\Desktop\CEB Bill Payment\no_error.xlsx"
+payment_path = SavePath & "payment.xlsx"
+error_path = SavePath  & "processed.xlsx"
+no_error_path = SavePath & "no_error.xlsx"
 'create excel objects
 set xlapp = CreateObject("Excel.Application")
 set xlapp2 = CreateObject("Excel.Application")
@@ -132,7 +132,7 @@ For i = colFilteredItems.Count To 1 Step -1
 		'get amount in error file
 		amount_pos_start_payment = FindN("File:", objMessage.body, 2)
 		amount_pos_end_payment = Len(objMessage.body) - (amount_pos_start_payment + 4)
-		amount_error = Right(objMessage.body, amount_pos_end_payment)
+		amount_payment = Right(objMessage.body, amount_pos_end_payment)
 		'MsgBox amount_error
 		
 		
@@ -244,6 +244,5 @@ Set no_error_wkbk=Nothing
 Set xlapp=Nothing
 Set xlapp2=Nothing
 Set xlapp3=Nothing
-
 
 
