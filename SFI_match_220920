@@ -48,6 +48,8 @@
 			//EBOX if there are 2 transactions for the same date with the same amount--> taking both-->enter transaction to check for counterparty 16/09/20
 			//EBOX counterparty acc num in swift are written manually, so sometimes it might miss some digits in front or at the end-->dont take last digit, compare with middle 6 digits 19/09/20 
 			//ENTIRE check presence of swift excel 22/09/20
+			//EBOX screenshot 02/10/20
+			//EBOX one day before check for BIR, ECH, AAH, AAO 02/10/20
 			
 			//auth 21/08/20-->test further if key changes
 					
@@ -57,6 +59,7 @@
 			
 			//MORONGWA date scenario to run 1030 and 1600
 			//201 search for latest date first--catered for date only not month 
+			
 			
 			//date
 			import java.time.LocalDate;
@@ -71,12 +74,15 @@
 			import java.text.SimpleDateFormat;
 			import org.apache.poi.ss.usermodel.DateUtil;
 			
-			//java string manipulation
+			//java string manipulation 
 			import java.text.DecimalFormat;
 			import java.math.*; //big decimal
 			
 			//gAuth
 			import com.warrenstrange.googleauth.GoogleAuthenticator;
+			
+			//screenshot
+			import org.apache.commons.io.FileUtils
 			
 			//rounding of double
 			import java.math.RoundingMode;
@@ -98,7 +104,7 @@
 			import org.apache.commons.lang.ArrayUtils;
 			
 			//DATE
-			LocalDate karanLocal    = LocalDate.parse("2020-09-03"); 							
+			LocalDate karanLocal    = LocalDate.parse("2020-09-30"); 							
 			//LocalDate karanLocal    = LocalDate.now()		
 			LocalDate pwd		    = karanLocal.minusDays(1);										//live
 			LocalDate second_pwd	= pwd.minusDays(1);
@@ -863,14 +869,22 @@
 				try{
 				ebox_load = $(byText("Transaction Search")).is(VISIBLE);
 				}catch(Exception e){
-					refresh();
 					pageLoadTimeout(100000);
-					$(byText("Transaction Search")).click();
+					refresh();
+					try{
+						ebox_load = $(byText("Transaction Search")).is(VISIBLE);
+					}catch(Exception w){
+						ebox_load = false;
+					}
 				}
 				
 				if(ebox_load){
 					$(byText("Transaction Search")).click();
 				}
+				else{
+					log.info("Ebox Login Failed");
+				}
+				
 				
 				DecimalFormat eboxFormat = new DecimalFormat("#.##");
 				
@@ -940,6 +954,12 @@
 							
 							sleep(3000)
 							
+							//navigate down in page to take proper screenshot
+							sendKeys(Keys.ARROW_DOWN)
+							sleep(1000)
+							sendKeys(Keys.ARROW_DOWN)
+							sleep(3000)
+							
 							//compare if ebox records match with MA files records
 							String branch = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[5]')).text();
 							String acc = $(byXpath('/html/body/div[3]/div[4]/table[2]/tbody/tr[2]/td[6]')).text();
@@ -964,8 +984,21 @@
 											if(st.cred_account_num.contains(acc_counterparty)){ //if counterparty from ebox matches that of swift message
 												log.info("Record Matched");
 												String credit_narrative = "REFUND "+eboxTransDate;
-											
+												
 												report.add(new IBK(st.cred_account_num,st.amount,st.deb_narrative,credit_narrative,st.bo_name,"",st.ebox_acc_num,st.ebox_branch)); //add cr narrative
+												//screenshot
+												try{
+													byte[] screenShot = driver().getScreenshotAs(OutputType.BYTES) 
+													File screenshotFile = new File(daily_path+st.ebox_acc_num+".png");
+													int fileNo = 0;
+													while(screenshotFile.exists()){ 
+														fileNo++; 
+														String newName = daily_path+st.ebox_acc_num+"_"+fileNo+".png" 
+														screenshotFile = new File(newName);
+													}
+													screenshotFile.createNewFile();	  
+													FileUtils.writeByteArrayToFile(screenshotFile, screenShot);
+												}catch(Exception ex){log.info("Screenshot not taken");} 
 											}
 											else{
 												log.info("Record with same date found");
