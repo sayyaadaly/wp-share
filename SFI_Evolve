@@ -1,0 +1,153 @@
+inChrome(){
+
+ //try{
+  groovyLogger.info "Log into website http://muubhemapp0007.corp.dsarena.com:8180/sfiwebclient/login.jsp"
+open('http://muubhemapp0007.corp.dsarena.com:8180/sfiwebclient/login.jsp');
+Username = "SFIBOT@002MAC"
+Password = "Robot001"
+
+connectUsername = $(byXpath('//table/tbody/tr/td/input[@name = "username"]'))
+connectUsername.sendKeys(Username);
+
+connectPassword = $(byXpath('//table/tbody/tr/td/input[@name ="password"]'))
+connectPassword.sendKeys(Password);
+
+connect = $(byXpath('//table/tbody/tr/td/input[@value ="Login"]'));
+connect.click();
+sleep(2000);
+
+// Switching to the 1st frame, frame index 1
+switchTo().frame(1)
+
+try{
+setFluentWaitTimeout(180000)      
+  setFluentWaitPollingInterval(300)
+fluentWait()
+.ignoring(org.openqa.selenium.NoSuchElementException.class)
+.until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//table/tbody/tr/td/a[@target="content"][contains(text(),"Process Centre")]'))));
+}
+catch (Exception) {
+}
+
+//open('http://muubhemapp0007.corp.dsarena.com:8180/sfiwebclient/secured/mainframe.jsp');
+ProcessCentre = $(byXpath('//table/tbody/tr/td/a[@target="content"][contains(text(),"Process Centre")]'));
+ProcessCentre.click();
+
+// Switching to the parent frame, frame index content
+switchTo().defaultContent();
+switchTo().frame("content")
+
+UploadFiles = $(byXpath('//*[@type="button"][@value="reset"]'));
+UploadFiles.click();
+sleep(1000);
+confirm();
+try{
+setFluentWaitTimeout(180000)      
+  setFluentWaitPollingInterval(300)
+fluentWait()
+.ignoring(org.openqa.selenium.NoSuchElementException.class)
+.until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//table/tbody/tr/td/input[@type="button"][@value="Upload Files"]'))));
+}
+catch (Exception) {
+}
+UploadFiles = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Upload Files"]'));
+UploadFiles.click();
+AddToList = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Add To List"]'));
+AddToList.click();
+AddToList = $(byXpath('//table/tbody/tr/td/input[@Class="itemListItem"][@id="file1"]'));
+AddToList.click();
+}
+inDesktop{
+
+sleep(1000);
+sendKeys('^n')
+setClipboardText(currentdateFileFormatPath)
+    pressCtrlV();
+    pressEnter()
+    groovyLogger.info "Upload of file "+currentdateFileFormatPath+" completed"
+   
+    }
+   
+    inChrome{
+   
+sleep(100);
+upload = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="upload"]'));
+upload.click();
+sleep(1000);
+refresh = $(byXpath('//*[@value="Refresh"]'));////*[@id="page_border"]/table/tbody/tr/td[2]/input[1]
+refresh.click()
+try{
+setFluentWaitTimeout(180000)      
+  setFluentWaitPollingInterval(300)
+fluentWait()
+.ignoring(org.openqa.selenium.NoSuchElementException.class)
+.until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//table/tbody/tr/td/input[@type="button"][@value="Refresh"]'))));
+}
+catch (Exception) {
+
+}
+//sleep(14000);
+//log.info("Test before refresh")
+try {
+
+refresh = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Refresh"]'));
+refresh.click();
+sleep(1000);
+submit = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Submit Files"]'));
+submit.click();
+}
+catch (Exception e){
+try {
+//need to click on allow if the file have same amount as another file will do it later
+allow =  $(byXpath('//*[contains(text(),"Allow")]'));
+allow.click();
+
+refresh = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Refresh"]'));
+refresh.click();
+sleep(1000);
+
+submit = $(byXpath('//table/tbody/tr/td/input[@type="button"][@value="Submit Files"]'));
+submit.click();
+
+// if fail need to call mail to send error
+}
+
+   catch (Exception ee) {
+xpathError=$(byXpath('//div[@id="divView"]/table/tbody/tr[2]/td[2]/table/tbody/tr[2]/td[5]'));
+xpathErrortext = xpathError.getText()
+groovyLogger.info "Exception "+ xpathErrortext +" ***ERROR***"
+close()
+inDesktop{
+
+ Runtime.getRuntime().exec('cmd /c cscript ' + pathVBS_Script + 'VBS_3rdStep.vbs' +" "+  pathVBS_Script_1);  
+ ;}
+System.exit(0)
+
+}
+
+}
+
+sleep(2000);
+refresh = $(byXpath('//*[@value="Refresh"]'));////*[@id="page_border"]/table/tbody/tr/td[2]/input[1]
+refresh.click()
+sleep(2000);
+countXpath = 2
+
+while (true){
+
+try {
+//need to click on allow if the file have same amount as another file
+adv = $(byXpath('//*[@id="divView"]/table[2]/tbody/tr[2]/td[2]/table[@Class="dataList"]/tbody/tr['+countXpath+']/td[1]/*'));
+adv.click();
+sleep(1000);
+countXpath = countXpath + 1;
+
+}
+catch (exception) {
+
+break;
+
+}//end catch
+
+} //end while
+}
