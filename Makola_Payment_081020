@@ -7,8 +7,8 @@
 	</datastore>
 </var-def> 
 
-<secrets-vault-get alias="makola_capture_officer" />
-<secrets-vault-get alias="makola_supervisor_officer" />
+<secrets-vault-get alias="makola_maker" />
+<secrets-vault-get alias="makola_checker" />
 
 		
 <robotics-flow>
@@ -19,7 +19,7 @@
 		<script><![CDATA[
 			def BOT_CONFIG = [:]
 			links.getWrappedObject().toList().each { property ->
-				BOT_CONFIG.put(property.get("key").toString(), property.get("value").toString())
+				BOT_CONFIG.put(property.get("name").toString(), property.get("value").toString())
 			}
 			sys.defineVariable("BOT_CONFIG", BOT_CONFIG)
 		]]></script>	
@@ -35,10 +35,14 @@
 			import java.util.*;
 			import java.text.SimpleDateFormat;
 			
+			//screenshot
+			import org.apache.commons.io.FileUtils
+			
 		
-			String daily_path = "";//dailyPathStr
+			String daily_path = "\\\\muebcyp02fvg02\\eProcessing1\$\\ROBOTICS\\SFI Refund\\2020\\10 October\\08.10.20\\Evening\\"//dateExcelPathStr;//dailyPathStr
 			String open_folder_path = "";//
-			String debitAmtStr = debit_amount;
+			String debitAmtStr = "1000";//debit_amount;
+			
 			
 			//DATASTORE
 			//makola portal link
@@ -46,16 +50,16 @@
 			//debit branch
 			String debit_branch = (BOT_CONFIG.getWrappedObject().get("debit_branch").toString());
 			//debit account number
-			String debit_acc = (BOT_CONFIG.getWrappedObject().get("debit_acc").toString());
+			String debit_account = (BOT_CONFIG.getWrappedObject().get("debit_account").toString());
 			//credit branch
 			String ceb_branch = (BOT_CONFIG.getWrappedObject().get("credit_branch").toString());
 			//credit acc
-			String ceb_acc = (BOT_CONFIG.getWrappedObject().get("credit_acc").toString());
+			String ceb_acc = (BOT_CONFIG.getWrappedObject().get("credit_account").toString());
 			//workflow reference
 			String workflow_reference = (BOT_CONFIG.getWrappedObject().get("workflow_reference").toString());
 			//origination reference
 			String origination_reference = (BOT_CONFIG.getWrappedObject().get("origination_reference").toString());
-			
+			log.info(origination_reference)
 			//SECRETS VAULT
 			Map entryMap = secureEntryMap.getWrappedObject();
 			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("makola_maker");
@@ -72,10 +76,21 @@
 			
 			DateTimeFormatter makolaRefFormat = DateTimeFormatter.ofPattern("ddMMyyyy");
 			String karanDate = karanLocal.format(makolaRefFormat);
+			
+			//LOG FILE
+			FileWriter fr = new FileWriter(daily_path+"log.txt", true);
+			BufferedWriter loginta = new BufferedWriter(fr);
+			
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.append("--BILL PAYMENT MAKOLA--");
+			loginta.newLine();
+			loginta.newLine();
 		
 			//////////////////////////////////////////MAKOLA////////////////////////////////////////////
 			//////////////////////////////LOGIN TWICE///////////////////////////////
-			loginta.append("Makola");
+			loginta.append("Maker user- ");
+			loginta.append(username1);
 			loginta.newLine();
 			
 			boolean login_capture_pass = true;
@@ -85,27 +100,41 @@
 				//LOGIN
 				pageLoadTimeout(100000);
 				openChrome(makola_portal);
-				$(byXpath("//*[@id='username']")).sendKeys(username1);
-				$(byXpath("//*[@id='password']")).sendKeys(password1);
-				pageLoadTimeout(100000);
-				$(byXpath("//*[@id='kc-login']")).click();
-					
-				sleep(10000);
+				try{
+					$(byXpath("//*[@id='username']")).sendKeys(username1);
+					$(byXpath("//*[@id='password']")).sendKeys(password1);
+					pageLoadTimeout(100000);
+					$(byXpath("//*[@id='kc-login']")).click();
+				}catch(Exception e){
+					log.info("Already logged in as- "+username1);
+				}
 					
 				try{
-					login_capture_pass = $(byXpath("//*[@id='payment-capture']")).is(EXIST);
+					setFluentWaitTimeout(60000)
+					setFluentWaitPollingInterval(300)
+					fluentWait()
+					 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+					 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//*[@id="titleHeader"]/div/div/span'))));
+				}catch(Exception e){
+				}
+					
+				try{
+					login_capture_pass = $(byXpath('//*[@id="titleHeader"]/div/div/span')).is(EXIST);
 				}catch(Exception e){
 					login_capture_pass = false;
 				}
-				if(login_capture_pass){break;}
+				if(login_capture_pass){
+					log.info("Maker Login Successful");
+					loginta.append("Maker Login Successful");
+					loginta.newLine();
+					break;
+				}
 					
 			}
 			
 			if(!login_capture_pass){
-				log.info("Payment Officer Login failed twice. Stopping transaction");
-				loginta.append(karanLocal.toString());
-				loginta.newLine();
-				loginta.append("Payment Officer Login failed twice. Stopping transaction");
+				log.info("Maker Login failed twice. Stopping transaction");
+				loginta.append("Maker Login failed twice. Stopping transaction");
 				loginta.newLine();
 			}
 			
@@ -127,9 +156,17 @@
 			
 			////DEBIT
 			sleep(5000);
+			if(debit_branch.length() == 1){
+				debit_branch = "00"+debit_branch;
+			}
+			if(debit_branch.length() == 2){
+				debit_branch = "0"+debit_branch;
+			}
+			println(debit_branch)
+			println(debit_account)
 			$(byXpath("//*[@id='undefined']")).sendKeys(debit_branch);							//branch(hc)
 			//$(byXpath("//*[@id='undefined']")).sendKeys(branch);						//branch
-			$(byXpath("//*[@id='accountNumber']")).sendKeys(debit_acc);				//account number
+			$(byXpath("//*[@id='accountNumber']")).sendKeys(debit_account);				//account number
 			sendKeys(Keys.TAB);
 			sleep(3000);
 			
@@ -169,6 +206,12 @@
 			////CREDIT
 			//CEB
 			$(byXpath("//*[@id='bankCode0']")).text("03"); 					//bank code
+			if(ceb_branch.length() == 1){
+				ceb_branch = "00"+ceb_branch;
+			}
+			if(ceb_branch.length() == 2){
+				ceb_branch = "0"+ceb_branch;
+			}
 			$(byXpath("//*[@id='branchId0']")).sendKeys(ceb_branch);				//branch(hc)
 			$(byXpath("//*[@id='accountNumber0']")).sendKeys(ceb_acc);		//account number
 			//origination ref 
@@ -185,7 +228,7 @@
 			}
 			
 			//test
-			//Double credit_amt = 100.00;
+			Double credit_amt = Double.parseDouble(debitAmtStr)//100.00;
 			
 			//amount
 			try{
@@ -194,18 +237,11 @@
 			
 			
 			
-			
-			//test
-			//currBal = 111;
-			
-			
-			
-			
 			log.info("Credit Entry Done");
 			loginta.append("Credit entry has been successfully been entered into the system.");			
 			loginta.newLine();	
 			sleep(7000);
-			
+			/* 
 			/////////////////////////////////VERIFY MATCH///////////////////////////////
 			def gross_cred_amount = $(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[2]/div/div[3]/h4[3]/span")).getText();
 			String[] list_cred_amount = gross_cred_amount.split(" ");
@@ -246,15 +282,15 @@
 			//take screenshot if error
 			if(review_error){
 				try{
-					File screenshotFile = new File(Dir+"makola_capture_err.png");
+					File screenshotFile = new File(daily_path+"makola_capture_err.png");
 					screenshotFile.createNewFile();
 					byte[] screenShot = driver().getScreenshotAs(OutputType.BYTES)   
 					FileUtils.writeByteArrayToFile(screenshotFile, screenShot);
 				}catch(Exception ex){log.info("Screenshot not taken");}
 			}	
 			sleep(7000);
-		
-
+			*/
+				
 			int x = 1;
 			
 			///////////////////////////////APPROVE PAYMENT////////////////////////////////
@@ -263,18 +299,40 @@
 					
 				for (int d = 0; d < 2; d++){	//login twice
 					//LOGIN
-					pageLoadTimeout(100000);
-					openChrome(makola_portal);
+					//pageLoadTimeout(100000);
+					//openChrome(makola_portal);
 					try{
 						//logout
 						$(byXpath("/html/body/app-root/div/div/sol-header/div/sol-header-masthead/div[3]/div/div/ul/li/span")).click();
 						$(byText("Sign Out")).click();
 						sleep(3000);
-					}catch(Exception e){}
+					}catch(Exception e){
+						log.info("Logged out of Maker User- "+username1);
+					}
+					
+					try{
+						setFluentWaitTimeout(60000)
+						setFluentWaitPollingInterval(300)
+						fluentWait()
+						 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+						 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(("//*[@id='username']"))));
+					}catch(Exception e){
+					}
+					
+					
 					$(byXpath("//*[@id='username']")).sendKeys(username2);
 					$(byXpath("//*[@id='password']")).sendKeys(password2);
 					pageLoadTimeout(100000);
 					$(byXpath("//*[@id='kc-login']")).click();
+					
+					try{
+						setFluentWaitTimeout(60000)
+						setFluentWaitPollingInterval(300)
+						fluentWait()
+						 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+						 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//*[@id="titleHeader"]/div/div/span'))));
+					}catch(Exception e){
+					}
 					
 					sleep(10000);
 					
@@ -283,15 +341,17 @@
 					}catch(Exception e){
 						login_verify_pass = false;
 					}
-					if(login_verify_pass){break;}
+					if(login_verify_pass){
+						loginta.append("Checker Login Successful");
+						loginta.newLine();
+						break;
+					}
 					
 				}
 				
 				if(!login_verify_pass){
-					log.info("Payment Supervisor Login failed twice. Stopping transaction");
-					loginta.append(karanLocal.toString());
-					loginta.newLine();
-					loginta.append("Payment Supervisor Login failed twice. Stopping transaction");
+					log.info("Checker Login failed twice. Stopping transaction");
+					loginta.append("Checker Login failed twice. Stopping transaction");
 					loginta.newLine();
 				}
 				
@@ -451,7 +511,7 @@
 				trans_count--;
 				}
 				
-				//MOVE ERROR FILES TO DAILY FOLDER
+				/* //MOVE ERROR FILES TO DAILY FOLDER
 				File open_folder = new File(open_folder_path);
 				File[] filesList = open_folder.listFiles();
 				for(File file : filesList){
@@ -459,17 +519,21 @@
 						File error_file_daily = new File(daily_path+file.getName())
 						Files.move(file.toPath(),error_file_daily.toPath());
 					}
-				}
+				} */
 				////
 				//////////////////////////////LOGIN VERIFY ERROR///////////////////////////////		
 				}			
 			//////////////////////////////////////////////////////////////////////////////		
-			}
+			
 			///////////////////////////////APPROVE PAYMENT//////////////////////////////// 
 					
-				
+				 
+			}
 			
-		
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.newLine();
+			loginta.close(); 
 		
 		]]></script>
 	
