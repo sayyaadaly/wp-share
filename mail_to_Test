@@ -1,0 +1,610 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+	<!--Access datastore -->
+	<var-def name="links">
+		<datastore name="Manuel_Teller_Config">
+			SELECT * FROM @this
+		</datastore>
+	</var-def> 
+	<!--Access datastore -->
+
+	<var-def name="bot_task_properties">
+		<datastore name="Manuel_Teller_Config">
+			<template>select * from @this</template>
+		</datastore>
+	</var-def>
+	<script><![CDATA[
+		def BOT_CONFIG = [:]
+		bot_task_properties.getWrappedObject().toList().each { property ->
+			BOT_CONFIG.put(property.get("names").toString(), property.get("informations").toString())
+		}
+		sys.defineVariable("BOT_CONFIG", BOT_CONFIG)
+	]]></script>
+
+	
+	<!--Use the Variable in the Secrets vault -->
+	<secrets-vault-get alias="Teller_Onshore_Supervisor_Premier" />
+	<!--Use the Variable in the Secrets vault -->
+
+
+<script><![CDATA[ 
+
+   		import java.util.Calendar;
+		import java.util.Formatter;
+		import java.text.SimpleDateFormat;
+		
+		
+		import java.nio.file.Files;
+		import java.nio.file.Path;
+		import java.nio.file.Paths;
+		
+		String log_path = (BOT_CONFIG.getWrappedObject().get("Log_File").toString());
+
+	
+		log.info(log_path)	
+			
+	
+			
+		try{
+			Files.createDirectories(Paths.get(log_path));
+		}catch(Exception e){
+			log.info("Error " + e)	
+		}
+		
+		sys.defineVariable("log_path", log_path);
+		
+		
+]]></script>
+
+	
+<script><![CDATA[ 
+
+   		import java.util.Calendar;
+		import java.util.Formatter;
+		import java.text.SimpleDateFormat;
+		
+		
+		import java.nio.file.Files;
+		import java.nio.file.Path;
+		import java.nio.file.Paths;
+		
+		import java.time.Year;
+		
+		Calendar cal = Calendar.getInstance();
+
+		Formatter fmt4 = new Formatter();
+		fmt4 = new Formatter();
+		fmt4.format("%tm. %tB", cal,cal);
+      
+      
+      	def date = new Date()
+		def sdf = new SimpleDateFormat("dd.MM.yyyy")
+		log.info(sdf.format(date))	
+		
+		Year y = Year.now();  
+		
+		String Chrome_Download_path = (BOT_CONFIG.getWrappedObject().get("Custom_Chrome_Download_Path").toString());
+			
+		log.info(Chrome_Download_path)	
+			
+		String fs;
+		fs = String.format(Chrome_Download_path,y,fmt4, sdf.format(date));
+			
+		try{
+			Files.createDirectories(Paths.get(fs));
+		}catch(Exception e){
+			log.info("Error " + e)	
+		}
+		
+		sys.defineVariable("fs", Paths.get(fs));
+		
+		
+]]></script>
+
+
+	
+		<!--User actions e.g open browser click etc -->
+		<robotics-flow>
+			<robot driver="universal" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+			<capability name="chromeOptions">
+			<script return="chromeArgs"><![CDATA[
+				log.info("TestChrome" + fs.toString())	
+				import org.openqa.selenium.chrome.ChromeOptions;
+				String dl_path = "";
+				ChromeOptions options = new ChromeOptions();
+				Map<String,Object> prefs = new HashMap<String,Object>();
+				prefs.put("download.default_directory",fs.toString())	;
+				options.setExperimentalOption("prefs",prefs)
+				chromeArgs = options;
+			 ]]></script>
+		</capability>	
+			
+			
+			
+		<!--User actions e.g open browser click etc -->
+              
+              
+			<script><![CDATA[ 
+                  stop_Process = false
+                  sys.defineVariable("error_mail", stop_Process);
+              ]]></script>
+              
+			<!--Write groovy code for logics/clicks/enter data in fields -->
+				<script><![CDATA[ 
+				def sendingMail(stop_Process) {
+					String Mail_Host_Address = (BOT_CONFIG.getWrappedObject().get("Mail_Host").toString()); 
+					String Mail_From_Address = (BOT_CONFIG.getWrappedObject().get("Mail_From_Address").toString()); 
+					String Mail_To_Address = (BOT_CONFIG.getWrappedObject().get("Mail_To_Address").toString()); 
+
+                    sys.defineVariable("error_mail", stop_Process);
+
+                    sys.defineVariable("mail_host", Mail_Host_Address);
+					sys.defineVariable("mail_from", Mail_From_Address);
+					sys.defineVariable("mail_to", Mail_To_Address);
+
+                    sys.defineVariable("received_from","Manuel Teller Robots Onshore- Start_Of_Date");
+                    sys.defineVariable("subject","Stop Process");
+
+            }
+	
+				 
+				//def logDate = new Date();
+				import java.io.FileWriter;   // Import the FileWriter class
+				import java.io.IOException;  // Import the IOException class to handle errors
+				import java.nio.file.Files;
+				import java.nio.file.Path;
+				import java.nio.file.Paths;
+		
+
+				import java.text.SimpleDateFormat
+				def date = new Date()
+				def sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
+
+				log.info(sdf.format(date) + " " + "Start Onshore: ");
+
+				def String verifyLogIn;
+				
+				
+try{
+				Logger("----------------------------------------------------------------------");							
+				Logger("Start ONSHORE");
+				for(int i = 1;i<=2;i++) {
+			         //SECRETS VAULT
+						Map entryMap = secureEntryMap.getWrappedObject();
+						com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("Teller_Onshore_Supervisor_Premier");
+					
+						user = obj.getKey().toString();
+						pass = obj.getValue().toString();
+						
+						log.info(sdf.format(date) + " " +"Username: " + user );
+						
+						if(pass == "") {
+							pass = "1";
+						
+						}
+						
+						
+						
+						////DATASTORE
+						//DIRECTORY
+						String urlOnshore = (BOT_CONFIG.getWrappedObject().get("URL_OnShore").toString());
+						String urlOffshore = (BOT_CONFIG.getWrappedObject().get("URL_OffShore").toString());
+					
+						
+						log.debug("urlOnshore: " + urlOnshore);
+						Logger("urlOnshore: " + urlOnshore);
+						//Process Web
+						
+						try{
+							pageLoadTimeout(180000);
+							openChrome(urlOnshore);
+							Logger("Open Chrome" + urlOffshore);
+						}catch(Exception e){
+							Logger("Error Open Chrome" + urlOffshore);
+							log.info(sdf.format(date) + " " + "Error Browser");	
+							stop_Process = true
+							try{
+								sendingMail(stop_Process)
+							}catch(Exception exmail){
+								log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+							}
+						}
+						
+						sleep(5000);
+						log.info(sdf.format(date) + " " + "url: " + urlOnshore);	
+						
+						//Login to the site
+						$(byXpath('//*[@id="username"]')).sendKeys(user);
+						$(byXpath('//*[@id="password"]')).sendKeys(pass);
+						$(byXpath('//*[@id="btnLogin"]')).click();
+						
+						sleep(3000);
+						
+						def String strRole;
+						try{
+						strRole = $(byXpath('//*[@id="labRole"]')).text
+						Logger("strRole " + strRole);
+						}catch(Exception e){
+							log.info(sdf.format(date) + " " + "Dropdown list Roles selections");	
+							Logger("strRole " + "No List Roles selections");
+						}
+						
+						if  (strRole == "Role"){
+							$(byXpath('//*[@id="primaryRole"]')).sendKeys("Supervisor")
+							$(byXpath('//*[@id="btnLogin"]')).click();
+							Logger("strRole " + "Tried to select Supervisor");
+						}
+						//Login to the site
+						sleep(3000);
+ 					
+						
+						//Verify error user already log on
+						try{
+						 verifyLogIn = $(byXpath('//*[@id="headingLoginError"]')).text 
+						 Logger("Header " + verifyLogIn);
+						}catch(Exception e){
+							Logger("Header " + verifyLogIn);
+							log.info(sdf.format(date) + " " + "verifyLogIn: " + "No Header");	
+						}
+						log.info("verifyLogIn: " + verifyLogIn);
+						
+						
+						if (!verifyLogIn){
+							log.debug(sdf.format(date) + " " + "No Header");
+							break;
+						}else{
+							stop_Process = true
+							try{
+								sendingMail(stop_Process)
+							}catch(Exception exmail){
+								log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+							}
+							log.debug(sdf.format(date) + " " + "Header Present");
+							
+						}
+			        
+			      }
+
+					sleep(3000);
+					
+					try{
+						setFluentWaitTimeout(10000)
+						setFluentWaitPollingInterval(300)
+						fluentWait()
+						 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+						 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//*[@id="hideBuissinessDate"]/div/div[1]/div[1]'))));
+					}catch(Exception e){
+
+					}
+
+				  	
+ 
+ 
+ 
+			      //Verify if popup warning appear
+      				def String verifyWarning;
+      				def String messageOfWarning;
+					try{
+					 verifyWarning = $(byXpath('//*[@id="hideBuissinessDate"]/div/div[1]/div[1]')).text
+					 messageOfWarning = $(byXpath('//*[@id="hideBuissinessDate"]/div/div[1]/div[2]')).text
+					 Logger("PopUp Message " + messageOfWarning);
+					}catch(Exception e){
+						log.info(sdf.format(date) + " " + "verifyWarning: " + "No Warning");	
+						Logger("PopUp Message " + "No Warning");	
+					}
+					log.info(sdf.format(date) + " " + "verifyWarning: " + verifyWarning);
+      				
+      				if (!verifyWarning){
+						log.debug(sdf.format(date) + " " + "No Warning Message");
+
+					}else{
+						log.info("messageOfWarning : " + messageOfWarning);
+						//Click on Warning Message : OK
+						$(byAttribute('label','OK')).click();
+						Logger("messageOfWarning : " + messageOfWarning);
+				
+					}
+			      	sleep(3000);
+					
+					//Verify login role
+					try
+					{
+						def  String strRoleName;
+						strRoleName =  $(byText('Supervisor')).text();
+					
+						if  (strRoleName != "Supervisor")
+						{
+							stop_Process = true
+							try{
+								sendingMail(stop_Process)
+							}catch(Exception exmail){
+								log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+							}
+							log.info(sdf.format(date) + "Login Error Role : " + strRoleName + "Not equal to : " + "Supervisor");
+							//Log out
+							$(byTitle('Logout')).click();
+							//Confirm Log Out
+							$(byXpath('//*[@id="buttonlogoutDialogYes"]/span[2]')).click();
+							log.info(sdf.format(date) + "Login Error Role : " +"Logging Out Rate Update Offshore");
+							Logger("Login Error Role : " + strRoleName + "Not equal to : " + "Supervisor");
+							throw new Exception("Custom break")	
+						}	
+					}catch(Exception e)
+					{
+						try{
+								try{
+									sendingMail(true)
+								}catch(Exception exmail){
+									log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+								}
+								log.info(sdf.format(date) + "Login Error Role : Not equal to : " + "Supervisor");
+                                //Log out
+                                $(byTitle('Logout')).click();
+                                //Confirm Log Out
+                                $(byXpath('//*[@id="buttonlogoutDialogYes"]/span[2]')).click();
+								Logger("Logout");
+							}catch(Exception ex)
+							{
+								Logger("Successfull login to website");
+								log.info(sdf.format(date) + " " + "Successfull login to website");
+							}
+						
+							
+
+						
+					}
+			     
+			      
+					//After Login Verify Warning
+				if (!verifyLogIn){
+					log.info(sdf.format(date) + " " + "Successfull login to website");
+					sleep(5000);
+					
+      				
+					
+					sleep(3000);
+					try{
+						def Period_Processing = $(withText('Period Processing'))	
+						Period_Processing.click();
+						log.info(sdf.format(date) + " " + "Click on Period Processing");	
+						Logger("Click on Period Processing");
+					}catch(Exception e){
+						Logger("Error Click on Period Processing");
+						log.debug(e)
+					}
+					
+					
+					sleep(3000);
+					try{
+					// Store all the elements of same category in the list of WebElements
+						oRadioButton = $$(byName('SOD'))
+					
+					// Create a boolean variable which will hold the value (True/False)
+						def vEnableRbn = false
+						
+					
+						//Verify if Normal start of day | Business Date (RadioButton) is Enable
+						vEnableRbn = oRadioButton.get(0).isEnabled();
+						
+						if (vEnableRbn == false){
+							log.info(sdf.format(date) + " " + "Normal start of day | Business Date (RadioButton) is Disable and cannot proceed");	
+							Logger("Normal start of day | Business Date (RadioButton) is Disable");
+							
+							//Log out
+							$(byTitle('Logout')).click();
+							//Confirm Log Out
+							$(byXpath('//*[@id="buttonlogoutDialogYes"]/span[2]')).click();
+							log.info(sdf.format(date) + " " + "Logging Out Onshore since SODradio button is disable");		
+							Logger("Logging Out");
+							stop_Process = true
+							try{
+								sendingMail(stop_Process)
+							}catch(Exception exmail){
+								log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+							}
+						}
+						else{
+							// Continue code
+						 	//Verify if SOD is selected
+						 	def SODRbn = oRadioButton.get(0).isSelected();
+						 	
+						 	
+						 	// This will check that if the bValue is True means if the first radio button is selected
+							if(SODRbn){
+							    // This will select by default
+							    oRadioButton.get(0).setSelected(true)
+								Logger("Select the Button 1");
+							} else {
+							    // If the first radio button is not selected by default, the first will be selected
+							    oRadioButton.get(0).click()
+								Logger("Select the Button 1 first");
+							}
+							
+							
+							// Click on GO
+							$(byXpath('//*[@id="btnGo"]')).click();
+							
+							
+							sleep(3000);
+							
+							try{
+								BrainError = $(byXpath('//*[@id="buttonDeactivateYes"]/span')).click();
+							
+								log.info(sdf.format(date) + " " + "There are active users!Do you want to continue?: ");	
+							}catch(Exception e){
+
+							}
+							
+							
+							sleep(1000);
+							//verify message error
+							try{
+								BrainError = $(byXpath('//*[@id="labelErrRes"]')).text
+								Logger("BrainError: " + BrainError);
+								log.info(sdf.format(date) + " " + "BrainError: " + BrainError);	
+							}catch(Exception e){
+								
+							}
+							
+							sleep(5000);
+						 	
+						 	//wait for pop up message
+						 	try{
+								 verifyWarning = $($(byXpath('//*[@id="displayBusinessDate"]/div'))).text
+								 messageOfWarning = $(byXpath('//*[@id="displayBusinessDate"]/div/div[2]/div[1]')).text
+							
+								log.info(sdf.format(date) + " " + messageOfWarning);	
+								Logger("messageOfWarning : " + messageOfWarning);
+								}catch(Exception e){
+									log.info(sdf.format(date) + " " + "verifyWarning: " + "No Warning");	
+								}
+								
+						 	if (verifyWarning != null || verifyWarning != "") {
+						 	
+						 		// Click on YES
+								$(byXpath('//*[@id="dateDeactivateYes"]')).click();
+								Logger("pop up message : " + " Click on YES");
+						 	} 
+						 	
+						 	sleep(5000)
+						 	
+						 	// Capture processing completed
+						 	def vProcessingCompleted 
+						 	try {
+								vProcessingCompleted  = $(byXpath('//*[@id="labelProcessingCompleted"]/div/span[2]')).text();
+								Logger("Capture processing completed : " + vProcessingCompleted);
+							} catch (Exception e) {
+								Logger("Capture processing completed : " + "Error");
+								e.printStackTrace()
+							}
+						 	
+						 	
+						 	
+						 	try {
+								StrAlert  =   $(byClassName('alert')).text
+						 	
+							} catch (Exception e) {
+								e.printStackTrace()
+							}
+					
+						 	
+						 	if (StrAlert != null || StrAlert != "") {
+								log.info(sdf.format(date) + " " + "Message: "+ StrAlert);
+								Logger("Message Alert: "+ StrAlert);
+							}
+							if (vProcessingCompleted != null || vProcessingCompleted != "") {
+								log.info(sdf.format(date) + " " + "Message: "+ vProcessingCompleted);	
+								Logger("Capture processing completed : " + vProcessingCompleted);
+							}
+							
+							
+							
+						
+							//Log out
+							$(byTitle('Logout')).click();
+							//Confirm Log Out
+							$(byXpath('//*[@id="buttonlogoutDialogYes"]/span[2]')).click();
+							log.info(sdf.format(date) + " " + "ng Out Onshore");	
+							Logger("Logout");
+							Logger("----------------------------------------------------------------------");	
+						
+						
+						}
+						
+						
+						
+					}catch(Exception e){
+							Logger("Error From Selection of RadioButton till end ");
+							Logger("----------------------------------------------------------------------");	
+						
+						
+							//Log out
+							$(byTitle('Logout')).click();
+							//Confirm Log Out
+							$(byXpath('//*[@id="buttonlogoutDialogYes"]/span[2]')).click();
+							log.info(sdf.format(date) + "Error " + "Logging Out Onshore");
+							try{
+								sendingMail(true)
+							}catch(Exception exmail){
+								log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+							}
+					}
+				}
+			
+		
+}catch(Exception e){
+	Logger("Other Unkown Error");
+	Logger("----------------------------------------------------------------------");	
+	
+	log.info(sdf.format(date) + " " + "Error Browser");	
+	stop_Process = true
+	try{
+		sendingMail(stop_Process)
+	}catch(Exception exmail){
+		log.info(sdf.format(date) + " " + "Error Sending Mail" + " " + exmail);	
+	}
+}				
+
+
+def Logger(String strlog){
+    try {
+   		
+		def date = new Date();
+		def sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
+		def sdfLog = new SimpleDateFormat("yyyy-MM-dd");
+			
+      FileWriter myWriter = new FileWriter(log_path.toString()+  "\\\\" + sdfLog.format(date) +"_Log_SOD.txt", true);
+      myWriter.append("\n" );
+      myWriter.write(sdf.format(date).toString() + " : " + strlog);
+      myWriter.close();
+    } catch (IOException e) {
+      System.out.println("An error occurred.");
+      e.printStackTrace();
+    }
+}
+
+]]></script>
+				
+			
+			</robot>
+		</robotics-flow>
+	
+	
+<try>	
+
+		<body>
+			<case>
+				<if condition="${error_mail}">
+					<mail 
+						smtp-host="${mail_host}"
+						smtp-port="25"
+						type="html"
+						from = "${mail_from}"
+						to = 	"${mail_to}"
+						subject="[Error] Manuel Teller" 
+					>
+						
+						<var name="subject"/>Request received from <var name= "received_from"/>
+						
+						<![CDATA[<hr><em>]]>
+							Generated by Manuel Teller Bot
+						<![CDATA[</em>]]>
+						
+					</mail>
+				</if>
+			 </case>
+	 </body>
+	 <catch>
+		<script>
+            log.info("Error Sending Mail");	
+       </script>
+	 </catch>
+ </try>
+		
+	
+    <export include-original-data="true"></export>
+
+</config>
