@@ -41,8 +41,13 @@
 		
 			String daily_path = "\\\\muebcyp02fvg02\\eProcessing1\$\\ROBOTICS\\SFI Refund\\2020\\10 October\\08.10.20\\Evening\\"//dateExcelPathStr;//dailyPathStr
 			String open_folder_path = "";//
-			String debitAmtStr = "1000";//debit_amount;
-			
+			String dateExcelPath = "";//dateExcelPathStr;
+
+			String debitAmtStr = "1000";//debit_amount;			
+			double creditAmt = Double.parseDouble(debitAmtStr)//100.00;
+			String reversalAmtStr = "0";//reversal_amt
+			double reversalAmt = Double.parseDouble(reversalAmtStr)//100.00;
+			double debitAmt = creditAmt - reversalAmt;
 			
 			//DATASTORE
 			//makola portal link
@@ -227,12 +232,11 @@
 				dest_ref.sendKeys(payment);
 			}
 			
-			//test
-			Double credit_amt = Double.parseDouble(debitAmtStr)//100.00;
+			
 			
 			//amount
 			try{
-				$(byXpath("//*[@id='amount0']")).sendKeys(String.format("%.2f",credit_amt));
+				$(byXpath("//*[@id='amount0']")).sendKeys(String.format("%.2f",debitAmt));
 			}catch(Exception e){log.info("Error inputing amount "+e)}
 			
 			
@@ -524,11 +528,59 @@
 				//////////////////////////////LOGIN VERIFY ERROR///////////////////////////////		
 				}			
 			//////////////////////////////////////////////////////////////////////////////		
-			
+			}
 			///////////////////////////////APPROVE PAYMENT//////////////////////////////// 
 					
-				 
+			
+
+					
+			//////////////////////////////WRITE TO DATE EXCEL/////////////////////////////
+			if(approved){
+				
+				try{
+				//TO(DATE EXCEL)
+				outputFile1 = new File(dateExcelPath); 
+				FileInputStream fisi1 = new FileInputStream(outputFile1);
+						
+				XSSFWorkbook outputWorkbook1 = new XSSFWorkbook(fisi1);
+				XSSFSheet outputSheet1 = outputWorkbook1.getSheet("bill_payment");	//change sheet name
+				
+				int outputRowCount1 = outputSheet1.getLastRowNum();//GET LAST OUTPUT EXCEL ROW
+			
+				
+				//date
+				outputSheet1.createRow(outputRowCount1+1).createCell(0).setCellValue(karanDate);
+				//debit/credit amount
+				outputSheet1.getRow(outputRowCount1+1).createCell(1).setCellValue(debitAmt);
+				//reversal made by bot
+				outputSheet1.getRow(outputRowCount1+1).createCell(2).setCellValue(reversalAmt);
+				//total reversal
+				//outputSheet1.getRow(outputRowCount1+1).createCell(3).setCellValue(final_reversal);
+				
+				
+				FileOutputStream fos1 = new FileOutputStream(outputFile1);
+				fisi1.close();
+				outputWorkbook1.write(fos1);
+				fos1.close();
+				
+				log.info("Successfully written to Date Excel");
+				//send mail to inform of successful run
+				success_mail = true;
+				subject = "CEB Bill Payment Successful"
+				body = "Please find attached log in mail."
+				
+				
+				}catch(Exception e){
+				
+					log.info("Failed to write to Date Excel"+e);
+					loginta.append("Failed to write to Date Excel");
+					loginta.newLine();
+				}
+			
 			}
+			//////////////////////////////WRITE TO DATE EXCEL/////////////////////////////
+			
+			
 			
 			loginta.append("----------------------------------------------------");
 			loginta.newLine();
