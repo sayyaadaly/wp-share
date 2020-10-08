@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+<var-def name="links">
+	<datastore name="ceb_billing">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
+
+<var-def name="reversal_list">
+	<datastore name="reversal_open">
+		SELECT * FROM @this
+	</datastore>
+</var-def> 
+
+<secrets-vault-get alias="makola_maker" />
+<secrets-vault-get alias="makola_checker" />
+
+		
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+			
+		<script><![CDATA[
+			def BOT_CONFIG = [:]
+			links.getWrappedObject().toList().each { property ->
+				BOT_CONFIG.put(property.get("name").toString(), property.get("value").toString())
+			}
+			sys.defineVariable("BOT_CONFIG", BOT_CONFIG)
+		]]></script>	
+			
+			
+
+			
+		<script><![CDATA[
+			
+			//date
+			import java.time.LocalDate;
+			import java.time.LocalDateTime;
+			import java.time.ZoneId;
+			import java.time.format.DateTimeFormatter
+			import java.util.*;
+			import java.text.SimpleDateFormat;
+			
+			//screenshot
+			import org.apache.commons.io.FileUtils
+			
+		
+			String daily_path = "\\\\muebcyp02fvg02\\eProcessing1\$\\ROBOTICS\\SFI Refund\\2020\\10 October\\08.10.20\\Evening\\"//dateExcelPathStr;//dailyPathStr
+			String open_folder_path = "";//
+			String dateExcelPath = "";//dateExcelPathStr;
+
+			String debitAmtStr = "1000";//debit_amount;			
+			double creditAmt = Double.parseDouble(debitAmtStr);
+			double reversalAmt = 0;
+			double debitAmt = 0;
+			
+			//DATASTORE
+			//makola portal link
+			String makola_portal = (BOT_CONFIG.getWrappedObject().get("makola_portal").toString());
+			//debit branch
+			String debit_branch = (BOT_CONFIG.getWrappedObject().get("debit_branch").toString());
+			//debit account number
+			String debit_account = (BOT_CONFIG.getWrappedObject().get("debit_account").toString());
+		
+			//workflow reference
+			String workflow_reference = (BOT_CONFIG.getWrappedObject().get("workflow_reference").toString());
+			//origination reference
+			String origination_reference = (BOT_CONFIG.getWrappedObject().get("origination_reference").toString());
+			log.info(origination_reference)
+			//SECRETS VAULT
+			Map entryMap = secureEntryMap.getWrappedObject();
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj = entryMap.get("makola_maker");
+			com.freedomoss.crowdcontrol.webharvest.web.dto.SecureEntryDTO obj2 = entryMap.get("makola_checker");
+			username1 = obj.getKey().toString();
+			password1 = obj.getValue().toString();
+			username2 = obj2.getKey().toString();
+			password2 = obj2.getValue().toString();
+			
+			//date
+			//LocalDate karanLocal    = LocalDate.parse("2020-05-28"); 							//test for current date
+			LocalDate karanLocal    = LocalDate.now()											//live
+			LocalDateTime kLDT 		= LocalDateTime.now(ZoneId.of("GMT+04:00"));				//zone timed live
+			
+			DateTimeFormatter makolaRefFormat = DateTimeFormatter.ofPattern("ddMMyyyy");
+			String karanDate = karanLocal.format(makolaRefFormat);
+			
+			//LOG FILE
+			FileWriter fr = new FileWriter(daily_path+"log.txt", true);
+			BufferedWriter loginta = new BufferedWriter(fr);
+			
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.append("--REVERSAL MAKOLA--");
+			loginta.newLine();
+			loginta.newLine();
+			
+			//REVERSE ENTRIES ON MAKOLA
+			String reversalAmtStr = "";
+			for(int i = 0; i < reversal_list.size(); i++){
+				reversalAmtStr = reversal_list.get(i).getAt("originator_amount").toString();
+				
+				
+				
+				
+				
+				
+				
+				
+				//calculate reversal amount
+				reversalAmt += Double.parseDouble(reversalAmtStr);
+			}
+			
+			
+			
+			
+			
+			
+			//final debit amount
+			debitAmt = creditAmt - reversalAmt;
+			
+			loginta.append("----------------------------------------------------");
+			loginta.newLine();
+			loginta.newLine();
+			loginta.close();
+			
+			sys.defineVariable("debitAmt",debitAmt)
+		
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+
+<export include-original-data="true">
+	 <single-column name="debit_amount_final" value="${debitAmt}"/>
+</export>
+
+</config>
