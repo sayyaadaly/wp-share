@@ -56,6 +56,9 @@
 			double reversalAmt = 0;
 			double debitAmt = 0;
 			
+			//
+			ArrayList verify_match_arr = new ArrayList();
+			
 			//DATASTORE
 			//makola portal link
 			String makola_portal = (BOT_CONFIG.getWrappedObject().get("makola_portal").toString());
@@ -249,7 +252,6 @@
 				}
 				
 				
-				
 				//amount
 				try{
 					double amt = Double.parseDouble(reversalAmtStr)
@@ -262,19 +264,297 @@
 				loginta.append("Credit entry has been successfully been entered into the system.");			
 				loginta.newLine();	
 				sleep(7000);
+				
+				//review
+				def review = $(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).is(ENABLED);
+				
+				if(review){
 					
-				
-				//add to_verify column(after maker stage)
-				//remove record from datastore(after checker stage) 
-				
-				
+					//review button
+					$(byXpath("/html/body/app-root/div/div/div/payment-capture/sol-footer/div/div/span[3]/footer-primary/button")).click();	
+					//submit button
+					sleep(3000);
+					$(byXpath("/html/body/app-root/div/div/div/payment-review/sol-footer/div/div/span[3]/footer-primary/button")).waitUntil(VISIBLE);
+						
+					try{
+					pageLoadTimeout(10000);
+					$(byText("Submit for authorisation")).click();
+					log.info("Submitted for Authorisation");
+					}catch(Exception e){}
+					loginta.append("Transaction Successfully Reviewed and Submitted. Waiting for Confirmation of Supervisor")
+					loginta.newLine(); 
+					
+					
+					//add to_verify column(after maker stage)[DATASTORE INSTEAD]
+					//add to array to match workflow reference while checking
+					verify_match_arr.add(idStr)
+					//remove record from datastore(after checker stage) 
+					
+				}
+				else{
+					
+					loginta.append("Balance Matched but Cannot Review Transaction. Something Wrong");
+					loginta.newLine();	
+					//review_error = true;
+					log.info("Balance Matched but Cannot Review Transaction. Something Wrong");
+					$(byText("Clear All")).click();
+					$(byText("Yes")).click();
+						
+				}
+					
+					
 				//calculate reversal amount
 				reversalAmt += Double.parseDouble(reversalAmtStr);
 			}
+		
+			
 			
 			///////////////////////////////////////////////////////////////////////////
 			}//login pass
 			///////////////////////////////////////////////////////////////////////////
+			
+			
+			int x = 1;
+			///////////////////////////////APPROVE PAYMENT////////////////////////////////
+			if(verify_match_arr.size() > 0){	//some check
+			//////////////////////////////////////////////////////////////////////////////
+					
+			for (int d = 0; d < 2; d++){	//login twice
+				//LOGIN
+				//pageLoadTimeout(100000);
+				//openChrome(makola_portal);
+				try{
+					//logout
+					$(byXpath("/html/body/app-root/div/div/sol-header/div/sol-header-masthead/div[3]/div/div/ul/li/span")).click();
+					$(byText("Sign Out")).click();
+					sleep(3000);
+				}catch(Exception e){
+					log.info("Logged out of Checker User- "+username2);
+				}
+				
+				try{
+					setFluentWaitTimeout(60000)
+					setFluentWaitPollingInterval(300)
+					fluentWait()
+					 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+					 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(("//*[@id='username']"))));
+				}catch(Exception e){
+				}
+				
+				
+				$(byXpath("//*[@id='username']")).sendKeys(username2);
+				$(byXpath("//*[@id='password']")).sendKeys(password2);
+				pageLoadTimeout(100000);
+				$(byXpath("//*[@id='kc-login']")).click();
+				
+				try{
+					setFluentWaitTimeout(60000)
+					setFluentWaitPollingInterval(300)
+					fluentWait()
+					 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+					 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//*[@id="titleHeader"]/div/div/span'))));
+				}catch(Exception e){
+				}
+				
+				sleep(10000);
+				
+				try{
+					login_verify_pass = $(byText("Task List")).is(EXIST);
+				}catch(Exception e){
+					login_verify_pass = false;
+				}
+				if(login_verify_pass){
+					loginta.append("Checker Login Successful");
+					loginta.newLine();
+					break;
+				}
+				
+			}
+			
+			if(!login_verify_pass){
+				log.info("Checker Login failed twice. Stopping transaction");
+				loginta.append("Checker Login failed twice. Stopping transaction");
+				loginta.newLine();
+			}
+			
+			
+			//////////////////////////LOGIN VERIFY ERROR////////////////////////////////
+			if(login_verify_pass){
+			////////////////////////////////////////////////////////////////////////////
+			
+			//TASK LIST
+			try{
+				$(byText("Task List")).click();
+			}catch(Exception e){
+				log.info("10s Wait")
+				sleep(10000);
+				$(byText("Task List")).click();
+			}
+			
+			sleep(5000);
+			
+			int trans_count = 0;
+			int y = 1;
+			boolean trans_end = false;
+			def trans;
+			////
+			for(int verif_count = 0; verif_count < verify_match_arr.size(); verif_count++){
+			////
+			x = 1;
+			trans_count = 0;
+			y = 1;
+			trans_end = false;
+			//count how many transactions present 
+			while(!trans_end){	
+				try{
+					//count no of transactions
+					trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+x+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+					//println("TRANS--> "+trans)
+					trans_count++;
+				}catch(Exception e){
+					//log.info("Transaction End")
+					trans_end = true;
+				}
+				x++;	
+			}
+			//log.info("No of transactions in Task List "+trans_count); 
+			
+			boolean duplicate = false;
+			Double credit_holders_amt_cmp;
+		
+			
+			while(y <= trans_count){			//loop through all transactions
+				
+				trans = $(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[2]/div/div")).getText();
+				
+				//arraylist verify_match_arr keeps track of transactions that have been captured, use this to match workflow ref
+				
+				
+				//open transaction to validate
+				if(trans.equals(verify_match_arr[verif_count])){	//if workflow ref is same as transactions id
+				
+					//VERIFY AND VALIDATE PAYMENT
+					if(!duplicate){							
+					$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+					
+					sleep(4000);
+					
+					String trans_id = $(byXpath("//*[@id='paymentId']")).text();
+					log.info(trans_id)
+					loginta.append(trans_id);
+					loginta.newLine();
+						
+					//VALIDATE PAYMENT
+					boolean cred_end = false;
+					int a = 0;
+					String cred;
+					int cred_verif_count = 0;
+					//count how many credit entries in verification--must be 1
+					while(!cred_end){
+						try{
+							cred = $(byXpath("//*[@id='"+a+"-amount']")).getText();
+							cred_verif_count++;
+						}catch(Exception e){
+							cred_end = true;
+						}
+						a++;
+					}
+					log.info("Number of credit entries: "+ cred_verif_count);
+					//loginta.append("Number of credit entries: "+ cred_verif_count);
+					//loginta.newLine();
+					
+					int match_count = 0;
+					if(cred_verif_count == credit_count_maks){
+						log.info("No of rows captured matches the no of rows to be verified");
+						//loginta.append("No of rows captured matches the no of rows to be verified");
+						//loginta.newLine();
+						//loop through amount list to see if it matches
+						for(int z=0; z < credit_count_maks; z++){
+							
+							cred = $(byXpath("//*[@id='"+z+"-amount']")).getText();
+							cred = cred.replace(",","");
+							Double cred_val = Double.parseDouble(cred);
+							
+							credit_holders_amt_cmp = credit_holders_amt.get(verify_match_arr[verif_count]);
+							
+													
+							if(cred_val == credit_holders_amt_cmp){
+
+								match_count++;
+							}
+						}
+					}
+					
+					//approved = false;
+					
+					//approve payment if all transactions matched
+					if(match_count == credit_count_maks){
+						//approve
+						log.info("All Rows Matched. Ready to Approve");
+						$(byText("Approve payment")).click();
+						//$(byText("Cancel")).click();	//for testing
+						
+						loginta.append("Row Matched. Approved");
+						loginta.newLine();
+						
+						//approved = true;
+					}
+					//else if all rows not matched- decline payment
+					else{
+						log.info("Row not matched. Declining payment");
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Credit entry to be verified not matching with captured credit entry");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						loginta.append("Payment Declined. Credit entry to be verified not matching with captured credit entry");
+						loginta.newLine();
+					}
+					
+					
+					//$(byText("Cancel")).click();	//for testing
+					sleep(3000);
+					
+					duplicate = true;
+					}
+					
+					//DECLINE PAYMENT(DUPLICATE)
+					else if(duplicate){
+						log.info("Duplicate Found");
+						$(byXpath("//*[@id='taskListDatatable']/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper["+trans_count+"]/datatable-body-row/div[2]/datatable-body-cell[6]/div/div/div")).click();
+						sleep(5000);
+						$(byText("Decline payment")).click();
+						sleep(3000);
+						$(byText("Other")).click();
+						$(byXpath("//*[@id='rejectReasonText']")).sendKeys("Duplicate Capture");
+						sleep(2000);
+						$(byText("Decline")).click();
+						sleep(5000);
+						
+						loginta.append("Duplicate Payment(s) Declined");
+						loginta.newLine();
+					}
+					
+					
+					
+				}
+				
+				trans_count--;
+			}
+			////
+			}
+			////
+			//////////////////////////////LOGIN VERIFY ERROR///////////////////////////////		
+			}			
+			//////////////////////////////////////////////////////////////////////////////
+			
+			}
+			///////////////////////////////APPROVE PAYMENT//////////////////////////////// 
+				 
+			
 			
 			
 			//final debit amount
