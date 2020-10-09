@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+		
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+		<script><![CDATA[
+		
+			//automatic reversal taking from pwd to one day before current day 29/07/20
+			//debit amount will be [debit amount - reversal amount from previous execution]
+			
+			
+			//date
+			import java.time.LocalDate;
+			import java.time.LocalDateTime;
+			import java.time.ZoneId;
+			import java.time.format.DateTimeFormatter
+			import java.util.*;
+			import java.text.SimpleDateFormat;
+			//apache excel
+			import org.apache.poi.xssf.usermodel.*;
+			import org.apache.poi.ss.usermodel.*;
+			import org.apache.poi.hssf.usermodel.*;
+			import java.text.SimpleDateFormat;
+			import org.apache.poi.ss.usermodel.DateUtil
+			//read csv
+			import org.apache.commons.csv.CSVFormat;
+			import org.apache.commons.csv.CSVParser;
+			import org.apache.commons.csv.CSVRecord;
+			import java.io.IOException;
+			import java.io.Reader;
+			import java.nio.file.Files;
+			import java.nio.file.Paths;
+			//gson
+			import com.google.gson.Gson;
+			import org.json.simple.JSONObject;
+			
+			//DATASTORE
+			//json
+			
+			Map columnRecordsHash = new LinkedHashMap();
+			//JSONObject columnRecordsHash = new JSONObject();
+			List recordList = new ArrayList();
+		
+			//Global Variable[export]
+			String pwdStr 		 = "2020-10-05";
+			String karanLocalStr = "2020-10-06";
+			LocalDate pwd    = LocalDate.parse(pwdStr); 
+			LocalDate karanLocal    = LocalDate.parse(karanLocalStr); 
+			
+			//path
+			String open_folder_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\"
+			String ebox_payment_file_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\payment_file.csv"
+			String processed_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\processed.xlsx" //open
+			String pwd_processed_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\processed_dated.xlsx"//daily
+			
+			//confirm reversal
+			boolean proceed_reversal = false;
+			
+			//COMPARE HASHMAPS
+			HashMap<Double,Double> details_map_mail = new HashMap<Double,Double>();//transactions received in error file
+			HashMap<Double,Double> details_map_mail_final = new HashMap<Double,Double>();//transactions received in error file that matches date
+			HashMap<Double,Double> details_map_ebox = new HashMap<Double,Double>();//transactions on ebox 
+			
+			//DATE LIST
+			ArrayList<Date> processed_date_list = new ArrayList();
+		
+			/////////////////////////////////////////READ PROCESSED EXCEL FOR PROCESSED CHECK////////////////////////////////////////
+			
+			File processedExcel = new File(processed_excel_path); 
+			FileInputStream fisi = new FileInputStream(processedExcel);
+			XSSFWorkbook inputWorkbook = new XSSFWorkbook(fisi);
+			XSSFSheet inputSheet = inputWorkbook.getSheetAt(0);
+			
+			//get last row
+			int rowCount = inputSheet.getLastRowNum();
+			Date receivedDate;
+			Date processedDate;
+			int processedCount;
+			int processedCountStr;
+			LocalDate processedLocalDate;
+			LocalDate receivedLocalDate;
+			Row currentRow;
+			
+			for(int currentRowCount = 1; currentRowCount <= rowCount; currentRowCount++){
+				currentRow = inputSheet.getRow(currentRowCount);
+				//clear map before going to next mail
+				details_map_mail.clear();
+				
+				if(currentRow.getCell(0) == null){
+					//println("brokeman")
+					break;
+				}
+				//received date of mail
+				receivedDate  = currentRow.getCell(0).getDateCellValue();
+				println(receivedDate)
+				receivedLocalDate = receivedDate.toLocalDate();
+				//date transactions processed
+				processedDate = currentRow.getCell(1).getDateCellValue();
+				processedLocalDate = processedDate.toLocalDate();
+				//count of error records 
+				processedCount  = currentRow.getCell(2).getNumericCellValue(); //check further if count NUEMRIC or STRING cell 
+				
+				
+				
+				//CHECK FOR REVERSALS
+				if(processedCount > 0){
+					//PROCESS TEXT FILES(RECEIVED FROM MAIL)
+					//read error file					
+					File open_folder = new File(open_folder_path);
+					File[] filesList = open_folder.listFiles();
+					for(File file : filesList){
+						//read one file at a time
+						if(file.getName().contains("error_file_"+processedLocalDate.toString())){
+							log.info("Getting records from error file- "+ file.getName());
+							Scanner myReader = new Scanner(file);
+							String header = myReader.nextLine();
+							String[] header_parts = header.split("\\|");
+							 
+							ArrayList details_temp = new ArrayList();
+							String temp = "";
+							int num_trans = Integer.parseInt(header_parts[6]);
+							while(myReader.hasNextLine() && myReader != null){
+								temp = myReader.nextLine();
+								Double id_double;
+								Double amt_double;
+								//Process details
+								if(temp != null || temp != ""){
+									details_temp = temp.split("\\|");
+
+									if(details_temp[1] != null && details_temp[1] != ""){
+										id_double = Double.parseDouble(details_temp[1]);
+									}
+									if(details_temp[4] != null && details_temp[4] != ""){
+										amt_double = Double.parseDouble(details_temp[4]);
+									}
+									//println(id_double + " " +  amt_double)
+									//add to map
+									details_map_mail.put(id_double,amt_double);									
+									
+								}
+							}
+							 myReader.close();
+							 
+						}
+					}
+					
+				}
+				
+				//WEEKEND AND WEEKDAYS SCENARIOS
+				//weekend scenario(run on monday)
+				if(karanLocal.getDayOfWeek().toString() == "MONDAY"){
+				
+					log.info("moonday");
+					
+					//thursday and friday is public holiday
+					if(pwd.getDayOfWeek().toString() == "WEDNESDAY"){
+					
+						log.info("notta fry-day nor thirst-day");
+						
+						//take friday and saturday mail
+						if(receivedLocalDate == pwd.plusDays(1) || receivedLocalDate == pwd.plusDays(2) || receivedLocalDate == pwd.plusDays(3)){
+							
+							log.info("Taking mails for Thursday, Friday and Saturday");
+						
+							//GATHER DATES FOR PAYMENT
+							processed_date_list.add(receivedLocalDate);
+							
+							//add records of error to map to compare to ebox payment file
+							details_map_mail_final.putAll(details_map_mail);
+							
+						}
+						
+					}
+					
+					
+					//friday is a public holiday
+					if(pwd.getDayOfWeek().toString() == "THURSDAY"){
+					
+						log.info("notta fry-day");
+						
+						//take friday and saturday mail
+						if(receivedLocalDate == pwd.plusDays(1) || receivedLocalDate == pwd.plusDays(2)){
+						
+							log.info("Taking mails for Friday and Saturday");
+							
+							//GATHER DATES FOR PAYMENT
+							processed_date_list.add(receivedLocalDate);
+							
+							//add records of error to map to compare to ebox payment file
+							details_map_mail_final.putAll(details_map_mail);
+							
+						}
+						
+					}
+					
+					
+					//normal(take only saturday mail)
+					if(pwd.getDayOfWeek().toString() == "FRIDAY" && receivedLocalDate == pwd.plusDays(1)){
+					
+						log.info("Taking mail for Saturday");
+						
+						//GATHER DATES FOR PAYMENT
+						processed_date_list.add(receivedLocalDate);
+						
+						//add records of error to map to compare to ebox payment file
+						details_map_mail_final.putAll(details_map_mail);
+						
+					}
+					
+				}
+				
+				//weekend scenario(run on tuesday) [READ TUESDAY AND MONDAY EXCELS]
+				if(karanLocal.getDayOfWeek().toString() == "TUESDAY"){
+					
+					log.info("choo's-day");
+					
+					//excluding monday is a public holiday
+					if(pwd.getDayOfWeek().toString() == "MONDAY"){
+						
+						log.info("pas de lundi cordonnier")
+						
+						//get records from monday's processed file
+						File pwdProcessedExcel = new File(pwd_processed_excel_path);
+						FileInputStream fisi2 = new FileInputStream(pwdProcessedExcel);
+						XSSFWorkbook inputWorkbook2 = new XSSFWorkbook(fisi2);
+						XSSFSheet inputSheet2 = inputWorkbook2.getSheetAt(0);
+						//get last row
+						int rowCount2 = inputSheet2.getLastRowNum();
+						Date receivedDate2;
+						Date processedDate2;
+						int processedCount2;
+						int processedCountStr2;
+						LocalDate processedLocalDate2;
+						LocalDate receivedLocalDate2;
+						Row currentRow2;
+						
+						for(int currentRowCount2 = 1; currentRowCount2 <= rowCount2; currentRowCount2++){
+							currentRow2 = inputSheet2.getRow(currentRowCount2);
+							//clear map before going to next mail
+							details_map_mail.clear();
+							
+							println("Row "+currentRowCount2)
+							
+							if(currentRow2.getCell(0) == null){
+								println("brokeman")
+								break;
+							}
+							
+							
+							//CHECK FOR REVERSALS
+							if(processedCount > 0){
+								//PROCESS TEXT FILES(RECEIVED FROM MAIL)
+								//read error file					
+								File open_folder = new File(open_folder_path);
+								File[] filesList = open_folder.listFiles();
+								for(File file : filesList){
+									//read one file at a time
+									if(file.getName().contains("error_file_"+processedLocalDate.toString())){
+										log.info("Getting records from error file- "+ file.getName());
+										Scanner myReader = new Scanner(file);
+										String header = myReader.nextLine();
+										String[] header_parts = header.split("\\|");
+										 
+										ArrayList details_temp = new ArrayList();
+										String temp = "";
+										int num_trans = Integer.parseInt(header_parts[6]);
+										while(myReader.hasNextLine() && myReader != null){
+											temp = myReader.nextLine();
+											Double id_double;
+											Double amt_double;
+											//Process details
+											if(temp != null || temp != ""){
+												details_temp = temp.split("\\|");
+
+												if(details_temp[1] != null && details_temp[1] != ""){
+													id_double = Double.parseDouble(details_temp[1]);
+												}
+												if(details_temp[4] != null && details_temp[4] != ""){
+													amt_double = Double.parseDouble(details_temp[4]);
+												}
+												//println(id_double + " " +  amt_double)
+												//add to map
+												details_map_mail.put(id_double,amt_double);									
+												
+											}
+										}
+										 myReader.close();
+										 
+									}
+								}
+								
+							}
+								
+							//received date of mail
+							receivedDate2  = currentRow2.getCell(0).getDateCellValue();
+							receivedLocalDate2 = receivedDate2.toLocalDate();
+							//date transactions processed
+							processedDate2 = currentRow2.getCell(1).getDateCellValue();
+							processedLocalDate2 = processedDate2.toLocalDate();
+							//count of error records 
+							processedCount2  = currentRow2.getCell(2).getNumericCellValue(); //check further if count NUEMRIC or STRING cell 
+							
+							
+							//take only monday and sunday mail
+							if(receivedLocalDate2.getDayOfWeek().toString() == "MONDAY" || receivedLocalDate2.getDayOfWeek().toString() == "SUNDAY"){
+								
+								log.info("moonday and sun-day takings anly");
+								
+								//GATHER DATES FOR PAYMENT
+								processed_date_list.add(receivedLocalDate2);
+								
+								//add records of error to map to compare to ebox payment file
+								details_map_mail_final.putAll(details_map_mail);
+							}
+							
+						}
+						fisi2.close();			
+					}
+					
+				}
+				
+
+				//normal scenario-->check if date falls between one day after pwd and current day(normally it will be the same day except for some public holiday scenarios)
+				if(receivedLocalDate <= karanLocal && receivedLocalDate >= pwd.plusDays(1) && karanLocal.getDayOfWeek().toString() != "MONDAY"){  
+					//println("checkin in")
+					
+					//GATHER DATES FOR PAYMENT
+					processed_date_list.add(receivedLocalDate);
+					
+					//add records of error to map to compare to ebox payment file
+					details_map_mail_final.putAll(details_map_mail);
+					
+					
+					
+					
+					
+				}
+				
+			}
+			fisi.close();
+			//move processed excel from open to daily folder ith format processed_dd-MM-yy.xlsx
+			
+			println(details_map_mail_final)
+			println(processed_date_list)
+			/////////////////////////////////////////READ PROCESSED EXCEL FOR PROCESSED CHECK////////////////////////////////////////
+		
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			if(details_map_mail_final.size() > 0){
+			//////////////////////////////////////////////////////EBOX/////////////////////////////////////////////////////////////
+			openChrome(ebox_portal);
+			pageLoadTimeout(100000);
+			$(byXpath("//input[@name='username']")).sendKeys(username3);
+			$(byXpath("//input[@name='j_password']")).sendKeys(password3);
+			//$(byText("corp.dsarena.com")).click();//domain
+			pageLoadTimeout(30000);
+			$(byXpath("/html/body/div[2]/form/div[2]/input")).click();//login
+			
+			//STATEMENT VIEW
+			boolean ebox_load = false;
+			try{
+			ebox_load = $(byText("Transaction Search")).is(VISIBLE);
+			}catch(Exception e){
+				refresh();
+				pageLoadTimeout(100000);
+				$(byText("Transaction Search")).click();
+			}
+			
+			if(ebox_load){
+				$(byText("Transaction Search")).click();
+			}
+			
+			//search criteria-->general
+			$(byText('Counterparty')).click();
+			sleep(3000);
+			$(byXpath('//*[@id="counterparty"]/form/table/tbody/tr[4]/td[2]/input')).sendKeys(ceb_acc); //acc number
+			$(byXpath('//*[@id="counterparty"]/form/div[1]/input')).click(); //search
+			$(byXpath('/html/body/div[3]/div[2]/form[2]/input')).click()//export-->goes to Downloads by default
+			sleep(10000);
+			//downloadFileOnAgent('https://eboxprdcsc.corebanking.intra.absa.co.za/csc/secure/eChannel/exportSearchPayment.do?',path+"payment.csv");
+	 		
+			//////////////////////////////////////////////////EBOX///////////////////////////////////////////////////////////// */
+			
+			
+			
+			////////////////////////////////////////////READ PAYMENT CSV/////////////////////////////////////////////////////////////
+			
+			DateTimeFormatter paymentFileDateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy");//DateTimeFormatter.ofPattern("dd MMM yyyy");
+			//READ PAYMENT CSV
+			File ebox_payment_file = new File(ebox_payment_file_path);
+			//ArrayList to store details of branch, account and amount
+			ArrayList id_arr = new ArrayList();
+			ArrayList originator_branch_arr = new ArrayList();
+			ArrayList originator_account_arr = new ArrayList();
+			ArrayList originator_amount_arr = new ArrayList();
+			int credit_count; //number of creditors to reverse
+			if(ebox_payment_file.exists()){
+				log.info("Reading payment file- "+ ebox_payment_file.getName());
+				Reader reader = Files.newBufferedReader(Paths.get(payment_file_path));
+				CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT);
+				reader.readLine();//read header
+				int count = 0;
+				LocalDate transDate;
+				for (CSVRecord csvRecord : csvParser) {
+
+					// Accessing Values by Column Index
+					String transDateStr = csvRecord.get(4); //PostDate
+					String id = csvRecord.get(74); //TrxId
+					String originator_branch = csvRecord.get(12); //OriginatorBranchId
+					String originator_account = csvRecord.get(14); //OriginatorAccountNumber
+					String originator_amount = csvRecord.get(16); //OriginatorTransactionAmount
+
+					//add details to arraylist-->if one record is blank or null it would cause problem
+					if(originator_branch.length() == 1){
+						originator_branch = "00"+originator_branch;
+					}
+					if(originator_branch.length() == 2){
+						originator_branch = "0"+originator_branch;
+					}
+					
+					//date filter--->from one day after pwd to current day(normal scenario)
+					transDate = LocalDate.parse(transDateStr,paymentFileDateFormat); 
+					if(transDate >= pwd.plusDays(1) && transDate <= karanLocal){
+
+						credit_count++;
+						//add TrxId and amount to map
+						if(id != null || id != ""){
+							if(originator_amount != null || originator_amount != ""){
+								Double id_double = Double.parseDouble(id);
+								Double amt_double = Double.parseDouble(originator_amount);
+								
+								println(transDateStr + " " + originator_branch + " " + originator_account + " "  + originator_amount);
+								println(id_double + " " + amt_double)
+								
+								columnRecordsHash.put("transaction_date",transDateStr);
+								columnRecordsHash.put("originator_branch",originator_branch);
+								columnRecordsHash.put("originator_account",originator_account);
+								columnRecordsHash.put("originator_amount",originator_amount);
+								
+								Gson gson = new Gson();
+								String json = gson.toJson(columnRecordsHash,LinkedHashMap.class);
+								recordList.add(json);
+								
+								//recordList.add(columnRecordsHash);
+							
+								details_map_ebox.put(id_double,amt_double);
+								//originator_amount_arr.add(amt_double);
+							}
+							
+						}
+					
+					}
+					
+				}
+				csvParser.close();
+				reader.close();
+				//delete payment file 
+				//ebox_payment_file.delete();
+			}
+			
+			////////////////////////////////////////////READ PAYMENT CSV/////////////////////////////////////////////////////////////
+			
+			println(details_map_ebox);
+			
+			//COMPARE
+			double debit_reversal = 0.0;
+			if(details_map_mail_final.equals(details_map_ebox)){
+				//MATCHED
+				log.info("Transactions from eBox matched with error file(s)");
+				
+				//used matched bool to append to ds
+				proceed_reversal = true;
+				
+			}
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			}//reversal check
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			
+			sys.defineVariable("recordList",recordList);
+			sys.defineVariable("proceed_reversal",proceed_reversal);
+			sys.defineVariable("processed_date_list",processed_date_list);
+		 
+			
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+
+<case>
+	<if condition="${proceed_reversal}">
+		<loop item="newStatusSPData" maxloops="${recordList.size()}" index="index">
+			<list>
+				<script return="recordList" />
+			</list>
+			<body>
+				<script>
+					jsonMap = recordList.get(Integer.valueOf(index.toString())-1)
+				</script>
+				<insert-datastore datastore-name="reversal_open" create="true" json-value-map="${jsonMap}" />
+			</body>
+		</loop>
+	</if>
+</case>
+
+<export include-original-data="true">
+	 <single-column name="processed_date_list" value="${processed_date_list}"/>
+</export>
+
+</config>
