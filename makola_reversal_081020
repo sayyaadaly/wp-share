@@ -96,25 +96,185 @@
 			loginta.newLine();
 			loginta.newLine();
 			
-			//REVERSE ENTRIES ON MAKOLA
+			
+			loginta.append("Maker user- ");
+			loginta.append(username1);
+			loginta.newLine();
+			
+			boolean login_capture_pass = true;
+			boolean login_verfiy_pass  = true;
+				
+			for (int c = 0; c < 2; c++){
+				//LOGIN
+				pageLoadTimeout(100000);
+				openChrome(makola_portal);
+				try{
+					$(byXpath("//*[@id='username']")).sendKeys(username1);
+					$(byXpath("//*[@id='password']")).sendKeys(password1);
+					pageLoadTimeout(100000);
+					$(byXpath("//*[@id='kc-login']")).click();
+				}catch(Exception e){
+					log.info("Already logged in as- "+username1);
+				}
+					
+				try{
+					setFluentWaitTimeout(60000)
+					setFluentWaitPollingInterval(300)
+					fluentWait()
+					 .ignoring(org.openqa.selenium.NoSuchElementException.class)
+					 .until(ExpectedConditions.presenceOfElementLocated(By.xpath(('//*[@id="titleHeader"]/div/div/span'))));
+				}catch(Exception e){
+				}
+					
+				try{
+					login_capture_pass = $(byXpath('//*[@id="titleHeader"]/div/div/span')).is(EXIST);
+				}catch(Exception e){
+					login_capture_pass = false;
+				}
+				if(login_capture_pass){
+					log.info("Maker Login Successful");
+					loginta.append("Maker Login Successful");
+					loginta.newLine();
+					break;
+				}
+					
+			}
+			
+			if(!login_capture_pass){
+				log.info("Maker Login failed twice. Stopping transaction");
+				loginta.append("Maker Login failed twice. Stopping transaction");
+				loginta.newLine();
+			}
+			
+			
+			/////////////////////////////////LOGIN SUCCESS//////////////////////////////
+			if(login_capture_pass){
+			///////////////////////////////////////////////////////////////////////////
+			//PAYMENT CAPTURE
+			try{
+				pageLoadTimeout(10000);
+				$(byXpath("//*[@id='payment-capture']")).click();
+			}catch(Exception e){
+				log.info("10s Wait")
+				sleep(10000);
+				$(byXpath("//*[@id='payment-capture']")).click();
+			}
+			
+			n = 0;
+			
+			//GET ALL RECORDS FROM reversal_open ds
 			String reversalAmtStr = "";
+			String idStr = "";
 			for(int i = 0; i < reversal_list.size(); i++){
+				
+				idStr = reversal_list.get(i).getAt("id").toString();
+				log.info("Transaction id: " + idStr);
+				loginta.append("Transaction id: " + idStr);
+				loginta.newLine();
+				loginta.newLine();
+				
 				reversalAmtStr = reversal_list.get(i).getAt("originator_amount").toString();
+				branchStr = reversal_list.get(i).getAt("originator_branch").toString();
+				accStr = reversal_list.get(i).getAt("originator_account").toString();
+				
+				////DEBIT
+				sleep(5000);
+				if(debit_branch.length() == 1){
+					debit_branch = "00"+debit_branch;
+				}
+				if(debit_branch.length() == 2){
+					debit_branch = "0"+debit_branch;
+				}
+
+				$(byXpath("//*[@id='undefined']")).sendKeys(debit_branch);							//branch(hc)
+				//$(byXpath("//*[@id='undefined']")).sendKeys(branch);						//branch
+				$(byXpath("//*[@id='accountNumber']")).sendKeys(debit_account);				//account number
+				sendKeys(Keys.TAB);
+				sleep(3000);
+				
+				//available balance
+				String available_bal_str = $(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[1]/div/div/div[1]/span/h5[1]/b")).text();
+				log.info("Available Balance: "+available_bal_str);
+				loginta.append("Available Balance: ");
+				loginta.append(available_bal_str);		
+				loginta.newLine();
+				
+				//purpose of payment
+				if($(byXpath("//*[@id='paymentPurpose_customselect']")).is(PRESENT)){	
+					$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[1]/div/div/sol-custom-select/div/div")).click();
+					$(byText("Bill Payment")).click();
+				}
+				
+				//posting option = Consolidated
+				$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[2]/div/div[1]/div/div/div/sol-radio[2]/label/span[2]")).click();
+				
+				//Force Post->removed 240420	
+				$(byXpath("/html/body/app-root/div/div/div/payment-capture/div/div/form[1]/div/div[2]/div[2]/div[2]/div/div[2]/div/div[2]/sol-checkbox/label")).click();
+				
+				//Origination reference
+				$(byXpath("//*[@id='instructionOriginationReference']")).sendKeys(idStr);
+				
+				//workflow reference
+				$(byXpath("//*[@id='workflowReference']")).sendKeys(idStr);
 				
 				
 				
+				log.info("Debit Entry Done");
+				loginta.append("Debit entry has been successfully been entered into the system.");			
+				loginta.newLine();
+				
+				sleep(5000);
+			
+				
+				////CREDIT
+				$(byXpath("//*[@id='bankCode0']")).text("03"); 					//bank code
+				if(branchStr.length() == 1){
+					branchStr = "00"+branchStr;
+				}
+				if(branchStr.length() == 2){
+					branchStr = "0"+branchStr;
+				}
+				$(byXpath("//*[@id='branchId0']")).sendKeys(branchStr);				//branch
+				$(byXpath("//*[@id='accountNumber0']")).sendKeys(accStr);		//account number
+				//origination ref 
+				try{
+					$(byXpath("//*[@id='originationReference0']")).sendKeys(idStr);
+					log.info("Filling Origination Reference");
+				}catch(Exception e){}	
+				
+				//destination ref 
+				def dest_ref = $(byXpath("//*[@id='destinationReference0']"));
+				if(dest_ref.val() == ""){
+					dest_ref.sendKeys(idStr);
+				}
 				
 				
 				
+				//amount
+				try{
+					double amt = Double.parseDouble(reversalAmtStr)
+					$(byXpath("//*[@id='amount0']")).sendKeys(String.format("%.2f",amt));
+				}catch(Exception e){log.info("Error inputing credit amount "+e)}
+				
+				
+				
+				log.info("Credit Entry Done");
+				loginta.append("Credit entry has been successfully been entered into the system.");			
+				loginta.newLine();	
+				sleep(7000);
+					
+				
+				//add to_verify column(after maker stage)
+				//remove record from datastore(after checker stage) 
 				
 				
 				//calculate reversal amount
 				reversalAmt += Double.parseDouble(reversalAmtStr);
 			}
 			
-			
-			
-			
+			///////////////////////////////////////////////////////////////////////////
+			}//login pass
+			///////////////////////////////////////////////////////////////////////////
 			
 			
 			//final debit amount
