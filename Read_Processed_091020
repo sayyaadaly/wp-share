@@ -435,6 +435,7 @@
 								println(id_double + " " + amt_double)
 								
 								columnRecordsHash.put("transaction_date",transDateStr);
+								columnRecordsHash.put("id",id);
 								columnRecordsHash.put("originator_branch",originator_branch);
 								columnRecordsHash.put("originator_account",originator_account);
 								columnRecordsHash.put("originator_amount",originator_amount);
