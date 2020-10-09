@@ -1,0 +1,4 @@
+Control Tower URL: http://localhost:15280/workfusion
+Bot Relay URL: http://localhost:15444/wd/hub
+Agent URL: http://localhost:15100
+Server Bot URL: http://localhost:15444/wd/hub
