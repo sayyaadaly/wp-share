@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+	<!--Access datastore -->
+	<var-def name="links">
+		<datastore name="dataStore">
+			SELECT * FROM @this
+		</datastore>
+	</var-def> 
+	<!--Access datastore -->
+
+	
+	
+	
+<script><![CDATA[ 
+	stop_Process = true
+	sys.defineVariable("id_mail", 12525441);
+	sys.defineVariable("error_mail", stop_Process);
+]]></script>
+              
+	
+	
+	
+<var-def name="stopPrcess"> 
+	<datastore name="dataStore">
+		SELECT * FROM @this;
+		UPDATE @this SET checker_step = '${stop_Process}' WHERE id =  '${id_mail}';
+	</datastore> 
+</var-def>
+	
+    <export include-original-data="true"></export>
+
+</config>
