@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+
+<var-def name="bot_task_properties">
+	<datastore name="ceb_billing">
+		<template>select * from @this</template>
+	</datastore>
+</var-def>
+
+<var-def name="ph">
+		<datastore name="public_holidays">
+			SELECT * from @this
+		</datastore>
+</var-def>
+
+<script><![CDATA[
+	def BOT_CONFIG = [:]
+	bot_task_properties.getWrappedObject().toList().each { property ->
+		BOT_CONFIG.put(property.get("name").toString(), property.get("value").toString())
+	}
+	sys.defineVariable("BOT_CONFIG", BOT_CONFIG)
+]]></script>	
+
+
+<script><![CDATA[ 
+
+		//date
+		import java.time.LocalDate;
+		import java.time.LocalDateTime;
+		import java.time.ZoneId;
+		import java.time.format.DateTimeFormatter
+		import java.util.*;
+		import java.text.SimpleDateFormat;	
+   		import java.util.Calendar;
+		import java.util.Formatter;
+		
+		//create directory
+		import java.nio.file.Files;
+		import java.nio.file.Path;
+		import java.nio.file.Paths;
+		
+		boolean phCheck = false;
+		
+		LocalDate karanLocal = LocalDate.now();
+		
+		LocalDate pwd = karanLocal.minusDays(1);
+		DateTimeFormatter csvDateFormat   = DateTimeFormatter.ofPattern("M/d/yyyy");
+		//LIST OF PUB_HO
+		List dateList = new ArrayList();
+		for(int i = 0; i < ph.size(); i++){
+			date = ph.get(i).getAt("Date").toString();	
+			dateList.add(date);
+			
+			LocalDate ph = LocalDate.parse(date,csvDateFormat)
+			if(karanLocal == ph){
+				log.info("Public Holiday");
+				phCheck = true;
+			}
+			
+		}
+		
+		//PREVIOUS WORKING DAY
+		boolean validPwd = false;
+		while(!validPwd){
+			
+			String pwdCheck = pwd.format(csvDateFormat);
+				 
+			//PREVIOUS WORKING IS A NON-SUNDAY PUBLIC HOLIDAY
+			if(dateList.contains(pwdCheck) && pwd.getDayOfWeek().toString() != "SUNDAY"){
+				pwd = pwd.minusDays(1);
+
+			}
+			//THE WEEKND
+			else if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+				//SUNDAY
+				if(pwd.getDayOfWeek().toString() == "SUNDAY"){
+					pwd = pwd.minusDays(1);
+				}
+				
+				//SATURDAY
+				if(pwd.getDayOfWeek().toString() == "SATURDAY"){
+					pwd = pwd.minusDays(1);
+				}
+			}
+			//ALL OTHER SCENARIOS(NORMAL WORKING DAY)
+			else{
+				validPwd = true;
+			}	
+		}
+
+		if(phCheck){
+		
+			String path = (BOT_CONFIG.getWrappedObject().get("path").toString());
+			String daily_path = path + "%s\\%s\\%s\\";
+			String monthly_path = path + "%s\\%s\\";
+		
+			
+			//PWD PATH
+			DateTimeFormatter dailyFolderDateFormat = DateTimeFormatter.ofPattern("dd.MM.yy");
+			Calendar pwdcal = Calendar.getInstance();
+			pwdcal.clear();
+			pwdcal.set(pwd.getYear(), pwd.getMonthValue()-1, pwd.getDayOfMonth());
+			Formatter fmt2 = new Formatter();
+			fmt2 = new Formatter();
+			fmt2.format("%tm %tB",pwdcal,pwdcal);
+			
+			String fd;
+			fd = String.format(daily_path,pwd.getYear(),fmt2, pwd.format(dailyFolderDateFormat));
+			println(fd)
+			
+			//CURRENT DAY PATH
+			Calendar cal = Calendar.getInstance();
+			println(cal)
+			
+			Formatter fmt4 = new Formatter();
+			fmt4 = new Formatter();
+			fmt4.format("%tm %tB",cal,cal)
+				 
+			String fs;
+			fs = String.format(daily_path,karanLocal.getYear(),fmt4, karanLocal.format(dailyFolderDateFormat));
+			println(fs)
+			
+			//MONTHLY REPORT PATH
+			Formatter fmt3 = new Formatter();
+			fmt3 = new Formatter();
+			
+			fmt3.format("%tB %tY",cal,cal)
+			String report_excep_path = path + "%s\\%s\\%s" + ".xlsx";
+			String fa = String.format(report_excep_path,karanLocal.getYear(),fmt4,fmt3);
+			println(fa)
+			
+			try{
+				Files.createDirectories(Paths.get(fs));
+			}catch(Exception e){
+				log.info("Error " + e)	
+			}
+		
+		}
+		
+		sys.defineVariable("currentDate",karanLocal);
+		sys.defineVariable("previousDate",pwd);
+		sys.defineVariable("dailyPathStr",fs);
+		sys.defineVariable("pwdPathStr",fd);
+		sys.defineVariable("monthlyReportPathStr",fa);
+		sys.defineVariable("phCheck",phCheck);
+	
+]]></script>
+	
+	
+<export include-original-data="true">
+	<single-column name="currentDate" value="${currentDate}"/>
+	<single-column name="previousDate" value="${previousDate}"/>
+	<single-column name="dailyPathStr" value="${dailyPathStr}"/>
+	<single-column name="pwdPathStr" value="${pwdPathStr}"/>
+	<single-column name="monthlyReportPathStr" value="${monthlyReportPathStr}"/>
+	<single-column name="phCheck" value="${phCheck}"/>
+</export>
+
+
+</config>
