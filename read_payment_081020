@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+
+		
+<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+		<script><![CDATA[
+		
+			//date
+			import java.time.LocalDate;
+			import java.time.LocalDateTime;
+			import java.time.ZoneId;
+			import java.time.format.DateTimeFormatter
+			import java.util.*;
+			import java.text.SimpleDateFormat;
+			//apache excel
+			import org.apache.poi.xssf.usermodel.*;
+			import org.apache.poi.ss.usermodel.*;
+			import org.apache.poi.hssf.usermodel.*;
+			import java.text.SimpleDateFormat;
+			import org.apache.poi.ss.usermodel.DateUtil
+			
+			String processedDateListRaw = "2020-10-04 2020-10-05 2020-10-06"//processed_date_list;
+			String[] processedDateList = processedDateListRaw.split("\\s+");
+			
+			//search in payment and pwd payment files
+			
+			Map columnRecordsHash = new LinkedHashMap();
+			//JSONObject columnRecordsHash = new JSONObject();
+			List recordList = new ArrayList();
+		
+			//Global Variable[export]
+			String pwdStr 		 = "2020-10-05";
+			String karanLocalStr = "2020-10-06";
+			LocalDate pwd    = LocalDate.parse(pwdStr); 
+			LocalDate karanLocal    = LocalDate.parse(karanLocalStr); 
+			
+			//path
+			String open_folder_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\"
+			String payment_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\payment.xlsx" //open
+			String pwd_payment_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\payment_dated.xlsx"//daily
+			
+			
+			//debit
+			double debit_amount = 0.0;
+			
+			
+			//CURRENT DAY PAYMENT FILE
+			File processedExcel = new File(payment_excel_path); 
+			FileInputStream fisi = new FileInputStream(processedExcel);
+			XSSFWorkbook inputWorkbook = new XSSFWorkbook(fisi);
+			XSSFSheet inputSheet = inputWorkbook.getSheetAt(0);
+			
+			//get last row
+			int rowCount = inputSheet.getLastRowNum();
+			Date receivedDate;
+			double paymentAmount;
+			int paymentCount;
+			LocalDate receivedLocalDate;
+			Row currentRow;
+			
+			for(int currentRowCount = 1; currentRowCount <= rowCount; currentRowCount++){
+				currentRow = inputSheet.getRow(currentRowCount);
+			
+				if(currentRow.getCell(0) == null){
+					//println("brokeman")
+					break;
+				}
+				//received date of mail
+				receivedDate  = currentRow.getCell(0).getDateCellValue();
+				//println(receivedDate)
+				receivedLocalDate = receivedDate.toLocalDate();
+				//println(receivedLocalDate.toString())
+				//amount of transactions processed
+				paymentAmount = currentRow.getCell(3).getNumericCellValue();
+				//count of error records 
+				paymentCount  = currentRow.getCell(2).getNumericCellValue(); //check further if count NUEMRIC or STRING cell 
+				
+				//calculate debit amount
+				if(processedDateList.contains(receivedLocalDate.toString())){
+					
+					log.info("Matched")
+					//paymentAmount = Double.parseDouble(paymentAmountStr);
+					debit_amount += paymentAmount;
+				}
+				
+			
+			}
+			fisi.close();	
+			
+			
+			//PWD PAYMENT FILE
+			File pwdProcessedExcel = new File(pwd_payment_excel_path); 
+			FileInputStream fisi2 = new FileInputStream(pwdProcessedExcel);
+			XSSFWorkbook inputWorkbook2 = new XSSFWorkbook(fisi2);
+			XSSFSheet inputSheet2 = inputWorkbook2.getSheetAt(0);
+			
+			//get last row
+			int rowCount2 = inputSheet2.getLastRowNum();
+			Date receivedDate2;
+			double paymentAmount2;
+			int paymentCount2;
+			int paymentCountStr2;
+			LocalDate receivedLocalDate2;
+			Row currentRow2;
+			
+			for(int currentRowCount2 = 1; currentRowCount2 <= rowCount2; currentRowCount2++){
+				currentRow2 = inputSheet2.getRow(currentRowCount2);
+			
+				if(currentRow2.getCell(0) == null){
+					//println("brokeman")
+					break;
+				}
+				//received date of mail
+				receivedDate2  = currentRow2.getCell(0).getDateCellValue();
+				//println(receivedDate)
+				receivedLocalDate2 = receivedDate2.toLocalDate();
+				//println(receivedLocalDate.toString())
+				//amount of transactions processed
+				paymentAmount2 = currentRow2.getCell(3).getNumericCellValue();
+				//count of error records 
+				paymentCount2  = currentRow2.getCell(2).getNumericCellValue(); //check further if count NUEMRIC or STRING cell 
+				
+				//calculate debit amount
+				if(processedDateList.contains(receivedLocalDate2.toString())){
+					
+					log.info("Matched")
+					//paymentAmount2 = Double.parseDouble(paymentAmountStr2);
+					debit_amount += paymentAmount2;
+				}
+				
+			
+			}
+			fisi2.close();	
+			
+			println(debit_amount)
+			
+			
+		]]></script>
+	
+	</robot>
+</robotics-flow>
+
+<export include-original-data="true">
+	 <single-column name="debit_amount" value="${debit_amount}"/>
+</export>
+
+</config>
