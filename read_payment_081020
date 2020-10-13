@@ -22,7 +22,7 @@
 			import java.text.SimpleDateFormat;
 			import org.apache.poi.ss.usermodel.DateUtil
 			
-			String processedDateListRaw = "2020-10-04 2020-10-05 2020-10-06"//processed_date_list;
+			String processedDateListRaw = "10/7/2020"//processed_date_list;
 			String[] processedDateList = processedDateListRaw.split("\\s+");
 			
 			//search in payment and pwd payment files
@@ -32,19 +32,20 @@
 			List recordList = new ArrayList();
 		
 			//Global Variable[export]
-			String pwdStr 		 = "2020-10-05";
-			String karanLocalStr = "2020-10-06";
+			String pwdStr 		 = "2020-10-06";
+			String karanLocalStr = "2020-10-07";
 			LocalDate pwd    = LocalDate.parse(pwdStr); 
 			LocalDate karanLocal    = LocalDate.parse(karanLocalStr); 
 			
 			//path
-			String open_folder_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\"
-			String payment_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\payment.xlsx" //open
-			String pwd_payment_excel_path = "C:\\Users\\Muthe Udaya Sankar\\Desktop\\CEB Bill Payment\\payment_dated.xlsx"//daily
-			
+			String open_folder_path = "Q:\\CEB Bill Payment\\config\\Open\\"
+			String payment_excel_path = open_folder_path+"payment.xlsx" //open
+			String pwdPath = ""//pwdPathStr;
+			String pwd_processed_excel_path = pwdPath+"processed_dated.xlsx"//daily
 			
 			//debit
 			double debit_amount = 0.0;
+			double reversal_amount = 0.0//reversalAmt;
 			
 			
 			//CURRENT DAY PAYMENT FILE
@@ -58,7 +59,7 @@
 			Date receivedDate;
 			double paymentAmount;
 			int paymentCount;
-			LocalDate receivedLocalDate;
+			def receivedLocalDate;
 			Row currentRow;
 			
 			for(int currentRowCount = 1; currentRowCount <= rowCount; currentRowCount++){
@@ -69,14 +70,20 @@
 					break;
 				}
 				//received date of mail
-				receivedDate  = currentRow.getCell(0).getDateCellValue();
-				//println(receivedDate)
-				receivedLocalDate = receivedDate.toLocalDate();
-				//println(receivedLocalDate.toString())
+				Cell receivedDateCell = currentRow.getCell(0)
+				if(DateUtil.isCellDateFormatted(receivedDateCell)){
+					println("chong")
+				}
+				receivedLocalDate = getCellPlusPlus(receivedDateCell);
+				println(receivedLocalDate.toString())
 				//amount of transactions processed
-				paymentAmount = currentRow.getCell(3).getNumericCellValue();
+				Cell paymentAmountCell = currentRow.getCell(3);
+				paymentAmount = getCellPlusPlus(paymentAmountCell);
+				println(paymentAmount)
 				//count of error records 
-				paymentCount  = currentRow.getCell(2).getNumericCellValue(); //check further if count NUEMRIC or STRING cell 
+				Cell paymentCountCell = currentRow.getCell(2);
+				paymentCount  = getCellPlusPlus(paymentCountCell);
+				println(paymentCount)
 				
 				//calculate debit amount
 				if(processedDateList.contains(receivedLocalDate.toString())){
@@ -135,8 +142,48 @@
 			}
 			fisi2.close();	
 			
+			debit_amount = debit_amount - reversal_amount;
 			println(debit_amount)
 			
+			sys.defineVariable("debitAmt",debit_amount)
+			
+			
+			
+			//check for cell type and get value with respect to
+			public getCellPlusPlus(Cell cell) {
+				switch (cell.getCellType())
+				{
+				case DateUtil.isCellDateFormatted(cell):
+					System.out.println("Date");
+					Date receivedDate = cell.getDateCellValue();
+					LocalDate receivedLocalDate = receivedDate.toLocalDate();
+					return receivedLocalDate;
+					break;
+				
+				case Cell.CELL_TYPE_BLANK:
+					System.out.println("Blannk");
+					break;
+				case Cell.CELL_TYPE_BOOLEAN:
+					System.out.println("bool");
+					break;
+				case Cell.CELL_TYPE_ERROR:
+					System.out.println("erreur");
+					break;
+
+				case Cell.CELL_TYPE_NUMERIC:
+					System.out.println("Number");
+					double numericValue = cell.getNumericCellValue();
+					return numericValue;
+					break;
+				case Cell.CELL_TYPE_STRING:
+					System.out.println("String");
+					String stringValue = cell.getStringCellValue();
+					double doubleValue = Double.parseDouble(stringValue);
+					return doubleValue;
+					break;
+
+				} 
+			}
 			
 		]]></script>
 	
@@ -144,7 +191,7 @@
 </robotics-flow>
 
 <export include-original-data="true">
-	 <single-column name="debit_amount" value="${debit_amount}"/>
+	 <single-column name="debitAmt" value="${debitAmt}"/>
 </export>
 
 </config>
