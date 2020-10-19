@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">	
+	
+	<robotics-flow>
+<robot driver="universal" name="driver" start-in-private="false" close-on-completion="true">
+			<capability name ="SEARCH_ALL_WINDOWS" value="true"/>
+			<capability name="CLOSE_ALL_WINDOWS" value="false"/>
+			
+				<script><![CDATA[
+					
+					//mail config
+					boolean send_report = true;
+					String mail_to = "EformRobot@absa.africa"
+					String mail_cc = "";
+					String greeting = "Dear All,";
+					String mail_body = "Advice and Report files are attached in this mail";
+					String mail_message = "Regards,";
+					String mail_message2 = ""
+					
+					//Report and Advice paths
+					String report_path = "";
+					String advice_path = "";
+					String report_path_1 = "";
+					String advice_path_1 = "";
+					ArrayList pathList = new ArrayList();
+					
+					String dailyPath = "Q:\\ROBOTICS\\SFI Refund\\2020\\10 October\\16.10.20\\Morning\\"
+					
+					//GET FILE PATH TO ATTACH TO MAIL
+					File daily_folder = new File(dailyPath);
+					File[] filesList = daily_folder.listFiles();
+					for(File file : filesList){
+						if(file.getAbsolutePath().contains(".adv") || file.getAbsolutePath().contains(".rpt")){
+							pathList.add(file.getAbsolutePath());
+						}
+					}
+					log.info("Report 1 Path: "+report_path);
+					log.info("Report 2 Path: "+report_path_1);
+					log.info("Advice 1 Path: "+advice_path);
+					log.info("Advice 2 Path: "+advice_path_1);
+					
+					//mail config
+					sys.defineVariable("send_report",send_report);
+					sys.defineVariable("mail_to",mail_to);
+					sys.defineVariable("mail_cc",mail_cc);
+					sys.defineVariable("mail_body",mail_body);
+					sys.defineVariable("greeting",greeting);
+					sys.defineVariable("mail_message",mail_message);
+					sys.defineVariable("mail_message2",mail_message2);
+					
+					//Report and Advice paths
+					sys.defineVariable("report_path",report_path);
+					sys.defineVariable("advice_path",advice_path);
+					sys.defineVariable("report_path_1",report_path_1);
+					sys.defineVariable("advice_path_1",advice_path_1);
+					sys.defineVariable("pathList",pathList);
+					
+				]]></script>
+	
+	</robot>
+</robotics-flow>
+
+<try>	
+	<body>
+		<case>
+			<if condition = "${send_report}">
+				<mail smtp-host="mail.absa.co.za"
+						smtp-port="25"
+						type="html"
+						from = "RBMURobotSFI@absa.africa"
+						to = "${mail_to}"
+						cc = "${mail_cc}"
+						subject="SFI Refund Completed" >
+
+				<![CDATA[<p>]]>
+					<var name="greeting"/>  
+				
+					
+					<![CDATA[<br>]]>
+						<var name="mail_body"/> 
+					
+					<![CDATA[<br>]]>
+						
+						
+					<![CDATA[<br></p>]]>
+					
+				<![CDATA[<p>]]>
+					<var name="mail_message"/>  
+				<![CDATA[<br></p>]]>
+									
+				<![CDATA[<p>]]>  
+					<var name="mail_message2"/>   
+				<![CDATA[</p>]]>
+				
+				<loop item="path" index="i" maxloops="${pathList.size()}">
+				    <list>
+				        <script return="pathList" />
+				    </list>
+				    <body>
+				        <mail-attach name="${sys.getFilename(path.toString())}">
+							<file path="${path}" type="binary"/>
+						</mail-attach>
+				    </body>
+				</loop>
+								
+
+				</mail>
+			</if>
+		</case>	
+	</body>
+	<catch>
+		<script>
+            log.info("Error Sending Mail");	
+       </script>
+	</catch>
+ </try>
+
+    <export include-original-data="true">
+	
+</export>
+
+</config>
