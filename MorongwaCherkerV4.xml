@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://web-harvest.sourceforge.net/schema/1.0/config" scriptlang="groovy">
+<!--access datastore -->
+	<var-def name="links">
+		<datastore name="Inward_EFT_Rejects_Config">
+			SELECT * FROM @this
+		</datastore>
+	</var-def> 
+	
+<script><![CDATA[
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.chrome.ChromeDriver;
+
+import java.util.concurrent.TimeUnit;
+
+//import org.openqa.selenium.WebDriver;
+//import org.openqa.selenium.chrome.ChromeDriver;
+
+import org.openqa.selenium.*;
+import org.openqa.selenium.JavascriptExecutor
+import org.openqa.selenium.chrome.*;
+
+        //apache excel
+        
+        import java.io.File;
+        import java.io.FileInputStream;
+        import java.io.FileNotFoundException;
+        import java.io.FileOutputStream;
+        import java.io.IOException;
+        import java.io.OutputStream;
+       
+        import java.nio.file.Files;
+        import java.nio.file.Path;
+        import org.apache.poi.xssf.usermodel.*;
+        import org.apache.poi.ss.usermodel.*;
+        import org.apache.poi.hssf.usermodel.*;
+        import java.text.SimpleDateFormat;
+        import org.apache.poi.ss.usermodel.DateUtil;
+        //gAuth
+        import com.warrenstrange.googleauth.GoogleAuthenticator;
+        //time
+        import groovy.time.TimeCategory
+
+        //log
+        import org.apache.log4j.Logger
+        import org.apache.log4j.PatternLayout
+        import org.apache.log4j.RollingFileAppender
+        // get the groovy logger by name
+        def groovyLogger = Logger.getLogger('groovy.log')
+
+        // pattern Layout
+        PatternLayout layout = new PatternLayout("%d{ISO8601} [%t] %-5p %c %x - %m%n")
+        // create a file appender
+        RollingFileAppender fileAppender = new RollingFileAppender(layout, "C:\\Users\\RB-MU_Robot_SFI_01\\Downloads\\myLog.txt")
+
+        groovyLogger.addAppender(fileAppender)
+         groovyLogger.info "start"
+        String Date32AExcel = ""
+        String CurrencyCode32AExcel = ""
+        String Amount32AExcel = ""
+        String MorongwaId  = ""
+
+        def sourceFile = "C:/TestChecker/Working_21_Sep_2020_1452.xlsx"
+
+        //PORTAL direct /search-payment
+        // WebDriver driver=new ChromeDriver();
+String morongwa_uat = "https://celine-frontend.morongwa-uat.cto-morongwa.270-nonprod.caas.absa.co.za/#/search-payment";
+        //String morongwa_live = "https://morongwa.prod.ocp.absa.co.za/#/";
+         String morongwa_login = "ABOR048"; String morongwa_otp = "Nature512\\\\\\"; String morongwa_pass = "Nature512\\\\\\";
+
+        //////////////////////////////////////////////////////////DOWNLOAD MORONGWA/////////////////////////////////////////////////////////////////
+         String secret = "NVZDQ2SOGNGU6QJSPBCU442DNA4G6Q3F";
+        //KAZG6OLEOJWTG2CCPJUHMTL2I5VESM2C
+        //NVZDQ2SOGNGU6QJSPBCU442DNA4G6Q3F
+
+
+
+// TODO Auto-generated method stub
+
+//setting the driver executable
+System.setProperty("webdriver.chrome.driver", "C:\\RPAExpress\\RPA\\rpa-grid\\drivers\\windows\\x32\\chromedriver.exe");
+
+//Initiating your chromedriver
+
+ChromeOptions options = new ChromeOptions();
+options.addArguments("user-data-dir=C:\\Users\\RB-MU_Robot_SFI_01\\AppData\\Local\\Google\\Chrome\\User Data");
+
+
+WebDriver driver = new ChromeDriver(options);
+//Creating the JavascriptExecutor interface object by Type casting
+JavascriptExecutor js = (JavascriptExecutor)driver;
+
+
+
+//Applied wait time
+driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
+//maximize window
+driver.manage().window().maximize();
+
+//open browser with desried URL
+driver.get(morongwa_uat);
+sleep(5000)
+
+WebElement loginLink = driver.findElement(By.xpath('//*[@id="username"]'));
+
+sleep(2000)
+
+new Actions(driver).keyDown(Keys.CONTROL).
+			sendKeys("a").
+			keyUp(Keys.CONTROL).
+			perform();
+
+
+
+loginLink.sendKeys(morongwa_login);
+sleep(5000)
+
+
+WebElement PWDloginLink = driver.findElement(By.xpath('//*[@id="password"]'));
+
+// new Actions(driver).keyDown(Keys.TAB).
+			// keyUp(Keys.TAB).
+			// perform();
+PWDloginLink.click()
+sleep(500)
+PWDloginLink.clear()
+sleep(1000)
+// new Actions(driver).keyDown(Keys.CONTROL).
+			// sendKeys("a").
+			// keyUp(Keys.CONTROL).
+			// perform();
+
+			
+			
+PWDloginLink.sendKeys(morongwa_pass);
+sleep(2000)
+
+
+WebElement loginCLICK = driver.findElement(By.xpath('//*[@id="kc-login"]'));
+ // $(byXpath('//*[@id="password"]')).sendKeys(morongwa_pass);
+// $(byXpath('//*[@id="kc-login"]')).click();
+//*[@id="kc-login"]
+loginCLICK.click()
+//closing the browser
+sleep(3000)
+        GoogleAuthenticator gAuth = new GoogleAuthenticator(); 
+        int code = gAuth.getTotpPassword(secret);
+WebElement G_AUTH_FILL = driver.findElement(By.xpath('//*[@id="otp"]'));
+G_AUTH_FILL.sendKeys(code.toString());
+
+sleep(1000)
+WebElement G_AUTH_CLICK = driver.findElement(By.xpath('//*[@id="kc-login"]'));
+G_AUTH_CLICK.click();
+
+
+sleep(5000)
+		
+
+WebElement element = driver.findElement(By.xpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[1]/div/div/mor-search/div/div/div[2]/div/form/div/div/div/div[1]/mor-saved-queries-modal/button'));
+js.executeScript("arguments[0].click();", element);
+sleep(2000);
+
+WebElement element2 = driver.findElement(By.xpath('/html/body/ngb-modal-window/div/div/div[2]/div/div[1]/div/div/ul/li[4]/span'));
+js.executeScript("arguments[0].click();", element2);
+sleep(2000);
+
+WebElement element3 = driver.findElement(By.xpath('//*[contains(text(),"Load")]'));
+js.executeScript("arguments[0].click();", element3);
+sleep(9000)
+
+WebElement element4 = driver.findElement(By.xpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[1]/div/div/mor-search/div/div/div[2]/div/form/div/div/div/div[3]/button'));
+js.executeScript("arguments[0].click();", element4);
+sleep(2000); // isn't really necessary, but helps to you to check, that pages are changing,
+
+WebElement element5 = driver.findElement(By.xpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/div/button/i'));
+js.executeScript("arguments[0].click();", element5);
+sleep(2000); // isn't really necessary, but helps to you to check, that pages are changing,
+
+WebElement elementRecord100 = driver.findElement(By.xpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[1]/div/div/div/button[6]'));
+js.executeScript("arguments[0].click();", elementRecord100);
+sleep(2000); // isn't really necessary, but helps to you to check, that pages are changing,
+
+sleep(5000)
+
+WebElement firstClick = driver.findElement(By.xpath('/html/body/app-root/div/div/div/ng-component/div[1]/ng-component/div/div[2]/div/div/div[2]/ngx-datatable/div/datatable-body/datatable-selection/datatable-scroller/datatable-row-wrapper[1]/datatable-body-row/div[1]/datatable-body-cell[2]/div/a'));
+js.executeScript("arguments[0].click();", firstClick);
+sleep(2000); // isn't really necessary, but helps to you to check, that pages are changing,
+
+WebElement ViewAndLockClick = driver.findElement(By.xpath('//*[@id="ngb-popover-1"]/div/a[2]'));
+js.executeScript("arguments[0].click();", ViewAndLockClick);
+sleep(2000); // isn't really necessary, but helps to you to check, that pages are changing,
+
+sleep(5000)
+
+driver.close();
+
+
+]]></script>
+
+
+    <export include-original-data="true"></export>
+</config>
