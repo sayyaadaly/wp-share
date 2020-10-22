@@ -1,0 +1,42 @@
+
+			////////////////////////////////////////////////////////SQL FILES LOOP//////////////////////////////////////////////////////////
+			for(int i = 0; i < results.size(); i++){		
+					
+				processing_finish = false;		
+				sendKeys('^o');//control o
+				switchTo().window('[CLASS:#32770;TITLE:Open Query]');
+				setClipboardText(Dir+"sql_files\\"+results[i]);	//path to upload
+				pressCtrlV();
+				pressEnter();
+				switchToExistingWindow(new WindowDescriptor("", "(?i).*\\QTeradata SQL Assistant\\E.*", false, true).toString(), 10000);
+				sendKeys('{F5}');
+				//sendKeys(Keys.F5);
+				switchTo().window('[CLASS:#32770;TITLE:Export File]');
+				
+				fname = results[i].split("\\.");
+				results[i] = fname[0];
+				setClipboardText(Dir+currmonth_folder+"\\"+currdt_folder+"\\"+results[i]);	//path to download
+				pressCtrlV();
+				$('[CLASS:Button;NAME:Save]').click();
+				
+				//STATUS OF PROCESS
+				switchTo().window('[class="WindowsForms10.Window.8.app.0.33c0d9d"][title="Teradata SQL Assistant (EMDW)"]');//hardcoded
+				//switchToExistingWindow(new WindowDescriptor("", "(?i).*\\QTeradata SQL Assistant\\E.*", false, true).toString(), 10000);	
+				while(!processing_finish){
+					sleep(10000);
+					rodolfo = $('[CLASS:TextBlock]').text();
+					if(rodolfo.contains("completed")){
+						processing_finish = true;
+					}
+					else if(rodolfo.contains("aborted")){break;}
+					else if(rodolfo.contains("Error")){break;}
+				}
+				
+				//get number of rows processed
+				if(processing_finish){
+					row_num_list = rodolfo.split(" ");
+					row_num = Integer.parseInt(row_num_list[2]);
+					numRows.put(results[i],row_num);
+				}
+			
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
