@@ -1,0 +1,43 @@
+boolean login_pass = true;
+
+		for (int c = 0; c < 2; c++){
+			
+			GoogleAuthenticator gAuth = new GoogleAuthenticator();
+			int code = gAuth.getTotpPassword(secret);
+			
+			//LOGIN
+			pageLoadTimeout(60000)
+			openChrome(morongwa_live);
+			$(byXpath('//*[@id="username"]')).sendKeys(morongwa_login);
+			$(byXpath('//*[@id="password"]')).sendKeys(morongwa_pass);
+			pageLoadTimeout(60000)
+			$(byXpath('//*[@id="kc-login"]')).click();
+			
+			//G_AUTH 
+			$(byXpath('//*[@id="otp"]')).sendKeys(code);//$(byXpath('//*[@id="totp"]')).sendKeys(code);
+			pageLoadTimeout(50000)
+			$(byXpath('//*[@id="kc-login"]')).click();
+			
+			boolean invalid_auth = false;
+			try{
+				invalid_auth = $(byXpath('//*[@id="kc-content-wrapper"]/div/span[2]')).is(EXISTS);
+			}catch(Exception e){}
+			if(invalid_auth){
+				String warning = $(byXpath('//*[@id="kc-content-wrapper"]/div/span[2]')).text();
+				if(warning.contains("Invalid authenticator code")){
+					log.info("Invalid authenticator code. Logging in again");
+					
+				}
+			}
+				
+			try{
+				login_pass = $(byXpath('//*[@id="morongwa"]')).is(EXIST);
+			}catch(Exception e){
+				login_pass = false;
+			}
+			if(login_pass){
+				log.info("Login Successful");
+				break;
+			}
+				
+		}
